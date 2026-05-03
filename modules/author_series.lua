@@ -1,0 +1,1016 @@
+-- SPDX-FileCopyrightText: 2026 Anh Do
+-- SPDX-License-Identifier: MIT
+--
+-- Portions adapted from medinauta's BrowseByMetadata user patch, which was
+-- inspired by poire-z's BrowseByMetadata proof of concept.
+
+local userpatch = require("userpatch")
+local ffi = require("ffi")
+local ffiUtil = require("ffi/util")
+local lfs = require("libs/libkoreader-lfs")
+local util = require("util")
+local Dispatcher = require("dispatcher")
+local BD = require("ui/bidi")
+local _ = require("gettext")
+local T = ffiUtil.template
+
+local FileManager = require("apps/filemanager/filemanager")
+local FileChooser = require("ui/widget/filechooser")
+
+local VIRTUAL_ITEMS = {
+    ROOT = {
+        symbol = "\u{e257}",
+    },
+    AUTHOR = {
+        browse_text = _("Browse by author"),
+        db_column = "authors",
+        symbol = "\u{f2c0}",
+    },
+    SERIES = {
+        browse_text = _("Browse by series"),
+        db_column = "series",
+        symbol = "\u{ecd7}",
+    },
+}
+
+local VIRTUAL_SUBITEMS_ORDERED = {
+    VIRTUAL_ITEMS.AUTHOR,
+    VIRTUAL_ITEMS.SERIES,
+}
+local VIRTUAL_ROOT_SYMBOL = VIRTUAL_ITEMS.ROOT.symbol
+local VIRTUAL_SYMBOLS = {}
+for k, v in pairs(VIRTUAL_ITEMS) do
+    VIRTUAL_SYMBOLS[v.symbol] = v
+end
+
+local VIRTUAL_PATH_TYPE_ROOT = "VIRTUAL_PATH_TYPE_ROOT"
+local VIRTUAL_PATH_TYPE_META_VALUES_LIST = "VIRTUAL_PATH_TYPE_META_VALUES_LIST"
+local VIRTUAL_PATH_TYPE_MATCHING_FILES = "VIRTUAL_PATH_TYPE_MATCHING_FILES"
+local representative_file_cache = {}
+local virtual_metadata_values_cache = {}
+local virtual_matching_files_cache = {}
+local virtual_cache_base_dir
+
+local function clearVirtualCaches()
+    representative_file_cache = {}
+    virtual_metadata_values_cache = {}
+    virtual_matching_files_cache = {}
+end
+
+local function invalidateVirtualCaches(base_dir)
+    if not base_dir or virtual_cache_base_dir == nil or virtual_cache_base_dir == base_dir then
+        clearVirtualCaches()
+        if not base_dir then
+            virtual_cache_base_dir = nil
+        end
+    end
+end
+
+local function ensureVirtualCacheBaseDir(base_dir)
+    if not base_dir then
+        return
+    end
+    if virtual_cache_base_dir ~= base_dir then
+        clearVirtualCaches()
+        virtual_cache_base_dir = base_dir
+    end
+end
+
+local function findVirtualRoot(path)
+    if not path then
+        return
+    end
+    return path:find("/" .. VIRTUAL_ROOT_SYMBOL, 1, true)
+end
+
+local function parseVirtualPath(path)
+    local root_start, root_end = findVirtualRoot(path)
+    if not root_start then
+        return
+    end
+    local base_dir = path:sub(1, root_start - 1)
+    local virtual_path = path:sub(root_end + 1)
+
+    local fragments = {}
+    for fragment in util.gsplit(virtual_path, "/") do
+        if fragment ~= "" then
+            table.insert(fragments, fragment)
+        end
+    end
+
+    local meta_name
+    local filters = {}
+    local filters_seen = {}
+    local cur_value
+    while #fragments > 0 do
+        local fragment = table.remove(fragments)
+        local meta = VIRTUAL_SYMBOLS[fragment]
+        if meta then
+            if meta == VIRTUAL_ITEMS.ROOT then
+                do end
+            else
+                local db_meta_name = meta.db_column
+                if cur_value ~= nil then
+                    table.insert(filters, { db_meta_name, cur_value })
+                    if not filters_seen[db_meta_name] then
+                        filters_seen[db_meta_name] = {}
+                    end
+                    filters_seen[db_meta_name][cur_value] = true
+                else
+                    meta_name = db_meta_name
+                end
+            end
+        else
+            cur_value = fragment
+            if cur_value == "\u{2205}" then
+                cur_value = false
+            end
+        end
+    end
+    return base_dir, meta_name, filters, filters_seen
+end
+
+local function getVirtualBaseDir(path)
+    if not path then
+        return
+    end
+    local root_start = findVirtualRoot(path)
+    if root_start then
+        return path:sub(1, root_start - 1)
+    end
+    return path
+end
+
+local function getVirtualBrowsePath(base_dir, item)
+    if not base_dir or not item then
+        return
+    end
+    return string.format("%s/%s/%s", base_dir, VIRTUAL_ROOT_SYMBOL, item.symbol)
+end
+
+local function virtualTextLess(a, b)
+    if a == b then
+        return false
+    elseif a == nil or a == false or a == "" then
+        return false
+    elseif b == nil or b == false or b == "" then
+        return true
+    end
+    return ffiUtil.strcoll(a, b)
+end
+
+local function sortVirtualMetadataValues(values)
+    table.sort(values, function(a, b)
+        local av = a[1]
+        local bv = b[1]
+        if av == bv then
+            return (a[2] or 0) < (b[2] or 0)
+        end
+        return virtualTextLess(av, bv)
+    end)
+end
+
+local function getVirtualLeafSortMode(filters)
+    if not filters or #filters == 0 then
+        return
+    end
+    local first_filter = filters[1] and filters[1][1]
+    if first_filter == "authors" then
+        return "author"
+    elseif first_filter == "series" then
+        return "series"
+    end
+end
+
+local function sortVirtualMatchingFiles(matching_files, sort_mode)
+    if not sort_mode then
+        return
+    end
+    table.sort(matching_files, function(a, b)
+        if sort_mode == "author" then
+            local a_series = a.series
+            local b_series = b.series
+            if a_series ~= b_series then
+                return virtualTextLess(a_series, b_series)
+            end
+        end
+
+        local a_index = a.series_index
+        local b_index = b.series_index
+        if a_index ~= b_index then
+            if a_index == nil then
+                return false
+            elseif b_index == nil then
+                return true
+            end
+            return a_index < b_index
+        end
+
+        local a_title = a.title or a[2]
+        local b_title = b.title or b[2]
+        if a_title ~= b_title then
+            return virtualTextLess(a_title, b_title)
+        end
+
+        return virtualTextLess(a[2], b[2])
+    end)
+end
+
+local function getVirtualSubtitle(path)
+    if not path or not path:find("/" .. VIRTUAL_ROOT_SYMBOL .. "/", 1, true) then
+        return
+    end
+
+    local _dir, last_part = util.splitFilePathName(path)
+    local _base_dir, meta_name, filters = parseVirtualPath(path)
+    local labels = {
+        authors = _("Authors"),
+        series = _("Series"),
+    }
+
+    if filters and #filters > 0 then
+        local value = filters[1][2]
+        if value == false then
+            return "\u{2205}"
+        end
+        if type(value) == "string" and value ~= "" then
+            return value
+        end
+    end
+
+    if meta_name then
+        return labels[meta_name]
+    end
+
+    return labels[last_part]
+end
+
+local function registerBrowseAction(action_name, arg, title)
+    Dispatcher:registerAction(action_name, {
+        category = "none",
+        event = "BrowseByMetadata",
+        arg = arg,
+        title = title,
+        filemanager = true,
+    })
+end
+
+registerBrowseAction("browse_by_metadata_author", "author", _("Browse by author"))
+registerBrowseAction("browse_by_metadata_series", "series", _("Browse by series"))
+
+-- Patch FileManager:setupLayout()
+local FileManager_setupLayout = FileManager.setupLayout
+FileManager.setupLayout = function (self)
+    FileManager_setupLayout(self)
+
+    file_chooser_showFileDialog = self.file_chooser.showFileDialog
+    self.file_chooser.showFileDialog = function (self, item)
+        if self:getVirtualPathTypePath(item.path) then
+            -- Clear book_props to block coverbrowser's showFileDialog
+            -- (it seems like file_chooser's showFileDialog maybe should always unconditionally clear book_props early? currently it only does so if is_file is true)
+            self.book_props = nil
+
+            -- don't display a file dialog for virtual directories
+            return true
+        end
+
+        return file_chooser_showFileDialog(self, item)
+    end
+end
+
+local FileManager_updateTitleBarPath = FileManager.updateTitleBarPath
+FileManager.updateTitleBarPath = function(self, path)
+    local subtitle = getVirtualSubtitle(path)
+    if subtitle then
+        self.title_bar:setSubTitle(subtitle)
+        return
+    end
+    return FileManager_updateTitleBarPath(self, path)
+end
+FileManager.onPathChanged = FileManager.updateTitleBarPath
+
+local FileChooser_onMenuSelect = FileChooser.onMenuSelect
+FileChooser.onMenuSelect = function(self, item)
+    if item and item.path and self:getVirtualPathTypePath(item.path) then
+        self:changeToPath(item.path, item.is_go_up and self.path)
+        return true
+    end
+    return FileChooser_onMenuSelect(self, item)
+end
+
+function FileManager:onBrowseByMetadata(kind)
+    local item
+    if kind == "author" then
+        item = VIRTUAL_ITEMS.AUTHOR
+    elseif kind == "series" then
+        item = VIRTUAL_ITEMS.SERIES
+    else
+        return
+    end
+
+    local current_path = self.file_chooser and self.file_chooser.path or self.root_path
+    local base_dir = getVirtualBaseDir(current_path)
+    local target_path = getVirtualBrowsePath(base_dir, item)
+    if target_path then
+        self.file_chooser:changeToPath(target_path)
+    end
+end
+
+-- Add FileChooser:getVirtualPathTypePath()
+function FileChooser:getVirtualPathTypePath(path)
+    path = path or self.path
+    if not path then return end
+    local root_start, root_end = findVirtualRoot(path)
+    if not root_start then
+        return
+    end
+    if root_end == #path then
+        return VIRTUAL_PATH_TYPE_ROOT
+    end
+    local _, last_part = util.splitFilePathName(path)
+    local symbol = VIRTUAL_SYMBOLS[last_part]
+    if symbol then
+        if symbol == VIRTUAL_ITEMS.ROOT then
+            return VIRTUAL_PATH_TYPE_ROOT
+        end
+        return VIRTUAL_PATH_TYPE_META_VALUES_LIST
+    end
+    return VIRTUAL_PATH_TYPE_MATCHING_FILES
+end
+
+
+-- Add FileChooser:getVirtualList()
+function FileChooser:getVirtualList(path, collate)
+    local dirs, files = {}, {}
+    local base_dir, virtual_root, virtual_path = path:match("(.-)/("..VIRTUAL_ROOT_SYMBOL..")(.*)")
+    if not virtual_root then
+        return dirs, files
+    end
+    ensureVirtualCacheBaseDir(base_dir)
+    local fragments = {}
+    for fragment in util.gsplit(virtual_path, "/") do
+        -- XXX issue if / in metadata content (Frank Thilliez keywords
+        table.insert(fragments, fragment)
+    end
+    if #fragments == 0 or fragments[#fragments] == VIRTUAL_ROOT_SYMBOL then
+        for i, v in ipairs(VIRTUAL_SUBITEMS_ORDERED) do
+            item = true
+            if collate then -- when collate == nil count only to display in folder mandatory
+                local fake_attributes = {
+                    mode = "directory",
+                    modification = 0,
+                    access = 0,
+                    change = 0,
+                    size = i,
+                }
+                item = self:getListItem(nil, v.symbol.." "..v.browse_text, path.."/"..v.symbol, fake_attributes, collate)
+                item.mandatory = nil
+            end
+            table.insert(dirs, item)
+        end
+        return dirs, files
+    end
+
+    -- We have arguments
+    local meta_name
+    local filters = {}
+    local filters_seen = {}
+    local cur_value
+    while #fragments > 0 do
+        local fragment = table.remove(fragments)
+        local meta = VIRTUAL_SYMBOLS[fragment]
+        if meta then
+            if meta == VIRTUAL_ITEMS.ROOT then
+                do end -- do nothing
+            else
+                local db_meta_name = meta.db_column
+                if cur_value ~= nil then
+                    table.insert(filters, {db_meta_name, cur_value})
+                    if not filters_seen[db_meta_name] then
+                        filters_seen[db_meta_name] = {}
+                    end
+                    filters_seen[db_meta_name][cur_value] = true
+                else
+                    meta_name = db_meta_name
+                end
+            end
+        else
+            cur_value = fragment
+            if cur_value == "\u{2205}" then
+                cur_value = false -- NULL
+            end
+        end
+    end
+    if meta_name then
+        local matching_values = virtual_metadata_values_cache[path]
+        if not matching_values then
+            matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filters)
+            sortVirtualMetadataValues(matching_values)
+            virtual_metadata_values_cache[path] = matching_values
+        end
+        for i, v in ipairs(matching_values) do
+            -- Ignore those already present in the current filters
+            if not filters_seen[meta_name] or not filters_seen[meta_name][v[1]] then
+                local fake_attributes = {
+                    mode = "directory",
+                    modification = 0,
+                    access = 0,
+                    change = 0,
+                    size = i,
+                }
+                local name = v[1] or "\u{2205}"
+                local this_path = path.."/"..(v[1] or "\u{2205}")
+                item = self:getListItem(nil, name, this_path, fake_attributes, collate)
+                item.nb_sub_files = v[2]
+                item.mandatory = self:getMenuItemMandatory(item)
+                local representative_path = self.ui and self.ui.coverbrowser and self.ui.coverbrowser:getRepresentativeFilepath(this_path)
+                if representative_path then
+                    item.is_virtual_metadata_leaf = true
+                    item.virtual_leaf_count = v[2]
+                    item.virtual_leaf_title = name
+                    item.representative_filepath = representative_path
+                end
+                table.insert(dirs, item)
+            end
+        end
+    else
+        local matching_files = virtual_matching_files_cache[path]
+        if not matching_files then
+            matching_files = self.ui.coverbrowser:getMatchingFiles(base_dir, filters)
+            sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filters))
+            virtual_matching_files_cache[path] = matching_files
+        end
+        for i, v in ipairs(matching_files) do
+            local fullpath, f = unpack(v)
+            local attributes = lfs.attributes(fullpath)
+            if attributes and attributes.mode == "file" and self:show_file(f, fullpath) then
+                local item = self:getListItem(path, f, fullpath, attributes, collate)
+                if getVirtualLeafSortMode(filters) == "series" and v.series_index then
+                    item.virtual_series_index = v.series_index
+                end
+                table.insert(files, item)
+            end
+        end
+    end
+    return dirs, files
+end
+
+-- Patch FileChooser:genItemTableFromPath()
+local FileChooser_genItemTableFromPath = FileChooser.genItemTableFromPath
+FileChooser.genItemTableFromPath = function (self, path)
+    if self:getVirtualPathTypePath(path) then
+        local collate = self:getCollate()
+        local dirs, files = self:getVirtualList(path, collate)
+        return self:genItemTable(dirs, files, path)
+    end
+    return FileChooser_genItemTableFromPath(self, path)
+end
+
+local FileChooser_refreshPath = FileChooser.refreshPath
+FileChooser.refreshPath = function(self)
+    if self:getVirtualPathTypePath(self.path) then
+        invalidateVirtualCaches(getVirtualBaseDir(self.path))
+    end
+    return FileChooser_refreshPath(self)
+end
+
+-- Patch FileChooser:genItemTable()
+local FileChooser_genItemTable = FileChooser.genItemTable
+FileChooser.genItemTable = function (self, dirs, files, path)
+    -- FileSearcher may call this with path == nil; avoid errors by falling back to default behavior
+    if path == nil then
+        return FileChooser_genItemTable(self, dirs, files, path)
+    end
+
+
+    local virtual_path_type = self:getVirtualPathTypePath(path)
+
+    -- TODO: somehow force collate to "size" for virtual directories
+    -- if virtual_path_type == VIRTUAL_PATH_TYPE_ROOT then
+    --     -- Listing "browse by title"...
+    --     collate = self.collates["size"]
+    --     collate_mixed = false
+    -- end
+
+    local item_table = {}
+
+    if virtual_path_type ~= nil then
+        table.move(dirs, 1, #dirs, 1, item_table)
+        table.move(files, 1, #files, #item_table + 1, item_table)
+        if self.show_current_dir_for_hold then
+            table.insert(item_table, 1, {
+                text = _("Long-press here to choose current folder"),
+                bold = true,
+                path = path.."/.",
+            })
+        end
+        if ffi.os == "Windows" then
+            for _, v in ipairs(item_table) do
+                if v.text then
+                    v.text = ffiUtil.multiByteToUTF8(v.text) or ""
+                end
+            end
+        end
+    else
+        item_table = FileChooser_genItemTable(self, dirs, files, path)
+        if item_table[1] and item_table[1].path:find("/..$") then
+            item_table[1].path = path.."/.."
+        end
+    end
+
+    return item_table
+end
+
+-- Patch FileChooser:getMenuItemMandatory()
+local FileChooser_getMenuItemMandatory = FileChooser.getMenuItemMandatory
+FileChooser.getMenuItemMandatory = function (self, item, collate)
+    if item.nb_sub_files then
+        return T("%1 \u{F016}", item.nb_sub_files)
+    end
+
+    return FileChooser_getMenuItemMandatory(self, item, collate)
+end
+
+-- Patch ffiUtil.realpath()
+local ffiUtil_realpath = ffiUtil.realpath
+ffiUtil.realpath = function (path)
+    if path ~= "/" and path:sub(-1) == "/" then
+        path = path:sub(1, -2)
+    end
+    if FileChooser:getVirtualPathTypePath(path) then
+        if util.stringEndsWith(path, "/..") then -- process "go up"
+            return path:gsub("(/[^/]+/%.%.$", "")
+        end
+        return path
+    end
+    return ffiUtil_realpath(path)
+end
+
+userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
+    local BookInfoManager = require("bookinfomanager")
+    local Blitbuffer = require("ffi/blitbuffer")
+    local BD = require("ui/bidi")
+    local Device = require("device")
+    local Font = require("ui/font")
+    local Geom = require("ui/geometry")
+    local CenterContainer = require("ui/widget/container/centercontainer")
+    local FrameContainer = require("ui/widget/container/framecontainer")
+    local MosaicMenu = require("mosaicmenu")
+    local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
+    local ListMenu = require("listmenu")
+    local ListMenuItem = userpatch.getUpValue(ListMenu._updateItemsBuildUI, "ListMenuItem")
+    local Size = require("ui/size")
+    local TextWidget = require("ui/widget/textwidget")
+    local Screen = Device.screen
+
+    -- Add BookInfoManager:getMatchingMetadataValues()
+    function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
+        local results = {}
+        local grouped = {}
+        if meta_name ~= "authors" and meta_name ~= "series" then
+            return results
+        end
+
+        local matching_files = self:getMatchingFiles(base_dir, filters)
+        for _, row in ipairs(matching_files) do
+            if meta_name == "authors" then
+                local authors = row.authors
+                if authors and authors:find("\n") then
+                    for author in util.gsplit(authors, "\n") do
+                        grouped[author] = (grouped[author] or 0) + 1
+                    end
+                else
+                    local author = authors or false
+                    grouped[author] = (grouped[author] or 0) + 1
+                end
+            else
+                local value = row.series or false
+                grouped[value] = (grouped[value] or 0) + 1
+            end
+        end
+
+        for value, nb in pairs(grouped) do
+            table.insert(results, {value, nb})
+        end
+        return results
+    end
+
+    -- Add BookInfoManager:getMatchingFiles()
+    function BookInfoManager:getMatchingFiles(base_dir, filters, limit)
+        if not base_dir then
+            return {}
+        end
+        local vars = {}
+        local sql = "select directory||filename, filename, title, authors, series, series_index from bookinfo where directory glob ?"
+        table.insert(vars, base_dir..'/*')
+        for _, filter in ipairs(filters) do
+            local name, value = filter[1], filter[2]
+            if value == false then
+                sql = T("%1 and %2 is NULL", sql, name)
+            elseif name == "authors" then
+                -- authors may have multiple values, separated by \n
+                sql = T("%1 and '\n'||%2||'\n' GLOB ?", sql, name)
+                table.insert(vars, "*\n"..value.."\n*")
+            else
+                sql = T("%1 and %2=?", sql, name)
+                table.insert(vars, value)
+            end
+        end
+        sql = sql .. " order by directory asc, filename asc"
+        if limit then
+            sql = sql .. " limit " .. tonumber(limit)
+        end
+        -- logger.warn(sql, vars)
+        self:openDbConnection()
+        local stmt = self.db_conn:prepare(sql)
+        stmt:bind(table.unpack(vars))
+        local results = {}
+        while true do
+            local row = stmt:step()
+            if not row then
+                break
+            end
+            if lfs.attributes(row[1], "mode") == "file" then
+                table.insert(results, {
+                    row[1],
+                    row[2],
+                    title = row[3],
+                    authors = row[4],
+                    series = row[5],
+                    series_index = tonumber(row[6]),
+                })
+            end
+        end
+        -- logger.warn(results)
+        return results
+    end
+
+    -- Add CoverBrowser:getMatchingMetadataValues()
+    function CoverBrowser:getMatchingMetadataValues(base_dir, meta_name, filters)
+        return BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
+    end
+
+    -- Add CoverBrowser:getMatchingFiles()
+    function CoverBrowser:getMatchingFiles(base_dir, filters)
+        return BookInfoManager:getMatchingFiles(base_dir, filters)
+    end
+
+    function CoverBrowser:getRepresentativeFilepath(path)
+        if representative_file_cache[path] ~= nil then
+            return representative_file_cache[path] or nil
+        end
+
+        local base_dir, meta_name, filters = parseVirtualPath(path)
+        if not base_dir or meta_name ~= nil or not filters or #filters == 0 then
+            representative_file_cache[path] = false
+            return nil
+        end
+
+        ensureVirtualCacheBaseDir(base_dir)
+        local matching_files = virtual_matching_files_cache[path]
+        if not matching_files then
+            matching_files = BookInfoManager:getMatchingFiles(base_dir, filters)
+            sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filters))
+            virtual_matching_files_cache[path] = matching_files
+        end
+        local filepath = matching_files[1] and matching_files[1][1] or false
+        representative_file_cache[path] = filepath
+        return filepath or nil
+    end
+
+    local badge_cache = {}
+    local badge_face = Font:getFace("infont", 13)
+    local badge_min_text = TextWidget:new{
+        text = "99",
+        face = badge_face,
+        fgcolor = Blitbuffer.COLOR_WHITE,
+    }
+    local badge_min_text_w = badge_min_text:getSize().w
+    local function getVirtualLeafBadge(count)
+        local text = tostring(count or "")
+        if badge_cache[text] then
+            return badge_cache[text]
+        end
+        local text_widget = TextWidget:new{
+            text = text,
+            face = badge_face,
+            fgcolor = Blitbuffer.COLOR_WHITE,
+        }
+        local text_size = text_widget:getSize()
+        local padding_h = Screen:scaleBySize(4)
+        local padding_v = Screen:scaleBySize(2)
+        local inner_w = math.max(badge_min_text_w, text_size.w)
+        local inner_h = text_size.h
+        local badge = FrameContainer:new{
+            margin = 0,
+            padding_top = padding_v,
+            padding_bottom = padding_v,
+            padding_left = padding_h,
+            padding_right = padding_h,
+            bordersize = math.max(1, Size.line.thin),
+            color = Blitbuffer.COLOR_WHITE,
+            radius = math.floor((inner_h + padding_v * 2) / 2) + 1,
+            background = Blitbuffer.COLOR_BLACK,
+            CenterContainer:new{
+                dimen = Geom:new{ w = inner_w, h = inner_h },
+                text_widget,
+            },
+        }
+        badge_cache[text] = badge
+        return badge
+    end
+
+    local function measureOverlayText(text, face)
+        local widget = TextWidget:new{
+            text = text,
+            face = face,
+            bold = true,
+        }
+        local width = widget:getSize().w
+        widget:free()
+        return width
+    end
+
+    local function getOverlayLines(text, face, max_width, max_lines)
+        text = util.trim(tostring(text or "")):gsub("%s+", " ")
+        if text == "" then
+            return {}
+        end
+
+        local words = {}
+        for word in text:gmatch("%S+") do
+            table.insert(words, word)
+        end
+
+        local lines = {}
+        local current = ""
+        local i = 1
+        while i <= #words and #lines < max_lines do
+            local candidate = current == "" and words[i] or current .. " " .. words[i]
+            if current == "" or measureOverlayText(candidate, face) <= max_width then
+                current = candidate
+                i = i + 1
+            else
+                table.insert(lines, current)
+                current = ""
+                if #lines == max_lines - 1 then
+                    break
+                end
+            end
+        end
+
+        if #lines < max_lines then
+            local rest = current
+            while i <= #words do
+                rest = rest == "" and words[i] or rest .. " " .. words[i]
+                i = i + 1
+            end
+            if rest ~= "" then
+                table.insert(lines, rest)
+            end
+        end
+        return lines
+    end
+
+    local function paintVirtualLeafTitleOverlay(item, bb, x, y, w, h, border)
+        local title = item.entry.virtual_leaf_title
+        if title == nil or title == false then
+            return
+        end
+
+        border = border or 0
+        local padding_h = Screen:scaleBySize(8)
+        local padding_v = Screen:scaleBySize(4)
+        local overlay_w = math.max(1, w - 2 * border)
+        local text_w = math.max(1, overlay_w - 2 * padding_h)
+        local font_size = 18
+        local face = Font:getFace("cfont", font_size)
+        local lines = getOverlayLines(title, face, text_w, 3)
+        if #lines == 0 then
+            return
+        end
+
+        local widgets = {}
+        local max_line_h = 0
+        for _, line in ipairs(lines) do
+            local widget = TextWidget:new{
+                text = line,
+                face = face,
+                bold = true,
+                max_width = text_w,
+                fgcolor = Blitbuffer.COLOR_BLACK,
+            }
+            table.insert(widgets, widget)
+            max_line_h = math.max(max_line_h, widget:getSize().h)
+        end
+
+        local line_step = max_line_h + Screen:scaleBySize(1)
+        local text_h = max_line_h + math.max(0, #widgets - 1) * line_step
+        local overlay_h = math.max(1, math.min(h - 2 * border, text_h + 2 * padding_v))
+        local overlay_x = x + border
+        local overlay_y = y + border + math.floor((h - 2 * border - overlay_h) / 2)
+        bb:lightenRect(overlay_x, overlay_y, overlay_w, overlay_h, 0.60)
+        if border > 0 then
+            bb:paintRect(overlay_x, overlay_y, overlay_w, border, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(overlay_x, overlay_y + overlay_h - border, overlay_w, border, Blitbuffer.COLOR_BLACK)
+        end
+
+        local text_y = overlay_y + math.floor((overlay_h - text_h) / 2)
+        for _, widget in ipairs(widgets) do
+            local size = widget:getSize()
+            widget:paintTo(bb, overlay_x + padding_h + math.floor((text_w - size.w) / 2), text_y)
+            text_y = text_y + line_step
+            widget:free()
+        end
+    end
+
+    local function paintVirtualLeafFolderDecoration(item, bb)
+        if not item.entry or not item.entry.is_virtual_metadata_leaf or not item.entry.virtual_leaf_count then
+            return
+        end
+        local target = item[1] and item[1][1] and item[1][1][1]
+        if not target or not target.dimen then
+            return
+        end
+
+        local tx = target.dimen.x
+        local ty = target.dimen.y
+        local tw = target.dimen.w
+        local th = target.dimen.h
+        if item._has_cover_image then
+            local line_w = math.max(3, Size.line.medium)
+            local line_h1 = math.floor(th * 0.95)
+            local line_h2 = math.floor(th * 0.90)
+            local line_gap = Screen:scaleBySize(3)
+            local line_x1 = tx + tw + line_gap
+            local line_x2 = line_x1 + line_w + line_gap
+            local line_y1 = ty + math.floor((th - line_h1) / 2)
+            local line_y2 = ty + math.floor((th - line_h2) / 2)
+            bb:paintRect(line_x1, line_y1, line_w, line_h1, Blitbuffer.COLOR_GRAY_9)
+            bb:paintRect(line_x2, line_y2, line_w, line_h2, Blitbuffer.COLOR_GRAY_9)
+            paintVirtualLeafTitleOverlay(item, bb, tx, ty, tw, th, target.bordersize)
+        end
+
+        local badge = getVirtualLeafBadge(item.entry.virtual_leaf_count)
+        local badge_size = badge:getSize()
+        local badge_x
+        if BD.mirroredUILayout() then
+            badge_x = tx + Screen:scaleBySize(5)
+        else
+            badge_x = tx + tw - badge_size.w - Screen:scaleBySize(5)
+        end
+        local badge_y = ty + th - badge_size.h - Screen:scaleBySize(5)
+        badge:paintTo(bb, badge_x, badge_y)
+    end
+
+    local series_index_badge_cache = {}
+    local series_index_face = Font:getFace("infont", 13)
+    local series_index_badge_height
+
+    local function getSeriesIndexBadgeHeight()
+        if series_index_badge_height then
+            return series_index_badge_height
+        end
+
+        local check_widget = TextWidget:new{
+            text = "\u{2713}",
+            face = series_index_face,
+            fgcolor = Blitbuffer.COLOR_WHITE,
+        }
+        local check_size = check_widget:getSize()
+        check_widget:free()
+        local padding = Screen:scaleBySize(3)
+        local border = math.max(1, Size.line.thin)
+        series_index_badge_height = math.max(check_size.w, check_size.h) + 2 * padding + 2 * border
+        return series_index_badge_height
+    end
+
+    local function getSeriesIndexBadge(series_index)
+        local text = tostring(series_index)
+        if series_index_badge_cache[text] then
+            return series_index_badge_cache[text]
+        end
+
+        local text_widget = TextWidget:new{
+            text = text,
+            face = series_index_face,
+            fgcolor = Blitbuffer.COLOR_WHITE,
+        }
+        local text_size = text_widget:getSize()
+        local border = math.max(1, Size.line.thin)
+        local padding_h = Screen:scaleBySize(4)
+        local height = getSeriesIndexBadgeHeight()
+        local width = math.max(height, text_size.w + 2 * padding_h + 2 * border)
+        local badge = {
+            text_widget = text_widget,
+            text_size = text_size,
+            width = width,
+            height = height,
+            border = border,
+        }
+        function badge:getSize()
+            return Geom:new{ w = self.width, h = self.height }
+        end
+        series_index_badge_cache[text] = badge
+        return badge
+    end
+
+    local function paintSeriesIndexBadge(bb, x, y, badge)
+        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_BLACK)
+        bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_WHITE)
+        local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
+        local text_y = y + math.floor((badge.height - badge.text_size.h) / 2)
+        badge.text_widget:paintTo(bb, text_x, text_y)
+    end
+
+    local function paintVirtualSeriesIndexBadge(item, bb)
+        if not item.entry or item.entry.virtual_series_index == nil then
+            return
+        end
+        local target = item[1] and item[1][1] and item[1][1][1]
+        if not target or not target.dimen then
+            return
+        end
+
+        local badge = getSeriesIndexBadge(item.entry.virtual_series_index)
+        local badge_y = target.dimen.y + target.dimen.h - badge.height - Screen:scaleBySize(5)
+        local badge_x
+        if BD.mirroredUILayout() then
+            badge_x = target.dimen.x + target.dimen.w - badge.width - Screen:scaleBySize(5)
+        else
+            badge_x = target.dimen.x + Screen:scaleBySize(5)
+        end
+        paintSeriesIndexBadge(bb, badge_x, badge_y, badge)
+    end
+
+    local function withRepresentativeFileEntry(item, update_func, suppress_text, ...)
+        if not item.entry or not item.entry.is_virtual_metadata_leaf or not item.entry.representative_filepath then
+            return update_func(item, ...)
+        end
+
+        local original_entry_file = item.entry.file
+        local original_entry_is_file = item.entry.is_file
+        local original_text = item.text
+        item.entry.file = item.entry.representative_filepath
+        item.entry.is_file = true
+        item.filepath = item.entry.representative_filepath
+        item.is_virtual_metadata_leaf = true
+        item.do_hint_opened = false
+        item._has_cover_image = nil
+        if suppress_text then
+            item.text = ""
+        else
+            item.text = item.text:gsub("/$", "")
+        end
+
+        local results = table.pack(update_func(item, ...))
+
+        item.entry.file = original_entry_file
+        item.entry.is_file = original_entry_is_file
+        item.text = original_text
+        item.do_hint_opened = false
+        item.been_opened = false
+        item.status = nil
+        item.show_progress_bar = false
+        return table.unpack(results, 1, results.n)
+    end
+
+    local MosaicMenuItem_update = MosaicMenuItem.update
+    function MosaicMenuItem:update(...)
+        return withRepresentativeFileEntry(self, MosaicMenuItem_update, false, ...)
+    end
+
+    local MosaicMenuItem_paintTo = MosaicMenuItem.paintTo
+    function MosaicMenuItem:paintTo(bb, x, y)
+        MosaicMenuItem_paintTo(self, bb, x, y)
+        paintVirtualLeafFolderDecoration(self, bb)
+        paintVirtualSeriesIndexBadge(self, bb)
+    end
+
+    local ListMenuItem_update = ListMenuItem.update
+    function ListMenuItem:update(...)
+        return withRepresentativeFileEntry(self, ListMenuItem_update, false, ...)
+    end
+end)
+
+-- disable 'New folder' action in virtual folders
+local FileManager_createFolder = FileManager.createFolder
+FileManager.createFolder = function (self)
+    if self.file_chooser:getVirtualPathTypePath() then return end
+    FileManager_createFolder(self)
+end
+
+-- disable 'Set as HOME' action for virtual folders
+local FileManager_setHome = FileManager.setHome
+FileManager.setHome = function (self, path)
+    if self.file_chooser:getVirtualPathTypePath() then return end
+    FileManager_setHome(self, path)
+end
+
+-- disable 'Add to folder shortcuts' action for virtual folders
+local FileManagerShortcuts = require("apps/filemanager/filemanagershortcuts")
+FileManagerShortcuts_editShortcut = FileManagerShortcuts.editShortcut
+FileManagerShortcuts.editShortcut = function (self, folder, post_callback)
+    if self.ui.file_chooser:getVirtualPathTypePath() then return end
+    FileManagerShortcuts_editShortcut(self, folder, post_callback)
+end
