@@ -46,10 +46,36 @@ end
 local VIRTUAL_PATH_TYPE_ROOT = "VIRTUAL_PATH_TYPE_ROOT"
 local VIRTUAL_PATH_TYPE_META_VALUES_LIST = "VIRTUAL_PATH_TYPE_META_VALUES_LIST"
 local VIRTUAL_PATH_TYPE_MATCHING_FILES = "VIRTUAL_PATH_TYPE_MATCHING_FILES"
+local EMPTY_VALUE_SYMBOL = "\u{2205}"
 local representative_file_cache = {}
 local virtual_metadata_values_cache = {}
 local virtual_matching_files_cache = {}
 local virtual_cache_base_dir
+
+local function encodeVirtualPathValue(value)
+    if value == false or value == nil then
+        return EMPTY_VALUE_SYMBOL
+    end
+    value = tostring(value)
+    if value == "" then
+        return "%EMPTY%"
+    end
+    return (value:gsub("([^A-Za-z0-9%._%-%~])", function(char)
+        return string.format("%%%02X", char:byte())
+    end))
+end
+
+local function decodeVirtualPathValue(fragment)
+    if fragment == EMPTY_VALUE_SYMBOL then
+        return false
+    end
+    if fragment == "%EMPTY%" then
+        return ""
+    end
+    return (fragment:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end))
+end
 
 local function clearVirtualCaches()
     representative_file_cache = {}
@@ -121,10 +147,7 @@ local function parseVirtualPath(path)
                 end
             end
         else
-            cur_value = fragment
-            if cur_value == "\u{2205}" then
-                cur_value = false
-            end
+            cur_value = decodeVirtualPathValue(fragment)
         end
     end
     return base_dir, meta_name, filters, filters_seen
@@ -349,7 +372,6 @@ function FileChooser:getVirtualList(path, collate)
     ensureVirtualCacheBaseDir(base_dir)
     local fragments = {}
     for fragment in util.gsplit(virtual_path, "/") do
-        -- XXX issue if / in metadata content (Frank Thilliez keywords
         table.insert(fragments, fragment)
     end
     if #fragments == 0 or fragments[#fragments] == VIRTUAL_ROOT_SYMBOL then
@@ -395,10 +417,7 @@ function FileChooser:getVirtualList(path, collate)
                 end
             end
         else
-            cur_value = fragment
-            if cur_value == "\u{2205}" then
-                cur_value = false -- NULL
-            end
+            cur_value = decodeVirtualPathValue(fragment)
         end
     end
     if meta_name then
@@ -418,8 +437,8 @@ function FileChooser:getVirtualList(path, collate)
                     change = 0,
                     size = i,
                 }
-                local name = v[1] or "\u{2205}"
-                local this_path = path.."/"..(v[1] or "\u{2205}")
+                local name = v[1] or EMPTY_VALUE_SYMBOL
+                local this_path = path.."/"..encodeVirtualPathValue(v[1])
                 item = self:getListItem(nil, name, this_path, fake_attributes, collate)
                 item.nb_sub_files = v[2]
                 item.mandatory = self:getMenuItemMandatory(item)
@@ -537,11 +556,11 @@ ffiUtil.realpath = function (path)
     if path ~= "/" and path:sub(-1) == "/" then
         path = path:sub(1, -2)
     end
-    if FileChooser:getVirtualPathTypePath(path) then
-        if util.stringEndsWith(path, "/..") then -- process "go up"
-            return path:gsub("(/[^/]+/%.%.$", "")
-        end
-        return path
+        if FileChooser:getVirtualPathTypePath(path) then
+            if util.stringEndsWith(path, "/..") then -- process "go up"
+                return path:gsub("/[^/]+/%.%.$", "")
+            end
+            return path
     end
     return ffiUtil_realpath(path)
 end

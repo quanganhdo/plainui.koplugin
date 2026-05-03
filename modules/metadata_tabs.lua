@@ -3,7 +3,6 @@
 
 local userpatch = require("userpatch")
 local Button = require("ui/widget/button")
-local DataStorage = require("datastorage")
 local Device = require("device")
 local Event = require("ui/event")
 local FileManager = require("apps/filemanager/filemanager")
@@ -36,39 +35,6 @@ local FRONTLIGHT_SYMBOL = "☼"
 local FRONTLIGHT_OFF_SYMBOL = "☀"
 local WIFI_ON_SYMBOL = ""
 local WIFI_OFF_SYMBOL = ""
-local DEBUG_LOG_PATH = DataStorage:getSettingsDir() .. "/metadata-tabs-debug.log"
-
-local function debugLog(...)
-    local file = io.open(DEBUG_LOG_PATH, "a")
-    if not file then
-        return
-    end
-    local parts = { os.date("!%Y-%m-%dT%H:%M:%SZ") }
-    for i = 1, select("#", ...) do
-        table.insert(parts, tostring(select(i, ...)))
-    end
-    file:write(table.concat(parts, "\t"), "\n")
-    file:close()
-end
-
-local function debugLogItemTable(label, path, item_table)
-    debugLog(label, "path", path, "count", item_table and #item_table or "nil")
-    if not item_table then
-        return
-    end
-    for i, item in ipairs(item_table) do
-        debugLog(
-            label .. ".item",
-            i,
-            "idx", item.idx,
-            "text", item.text,
-            "path", item.path,
-            "is_file", item.is_file,
-            "is_go_up", item.is_go_up,
-            "virtual", item.is_virtual_metadata_leaf
-        )
-    end
-end
 
 local function findVirtualRoot(path)
     if path then
@@ -826,7 +792,6 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     local FFIUtil = require("ffi/util")
     local FileChooser__updateItemsBuildUI = FileChooser._updateItemsBuildUI
     if not FileChooser__updateItemsBuildUI then
-        debugLog("tabs.coverbrowser.no_updateItemsBuildUI")
         return
     end
 
@@ -893,7 +858,6 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
             end
             if item.is_file and item.path and needsCoverExtraction(item.path, cover_specs) then
                 maybeShowLoadingToast(loading_state)
-                debugLog("tabs.coverbrowser.extract_visible", "path", file_chooser.path, "idx", idx_offset + idx, "file", item.path)
                 BookInfoManager:extractBookInfo(item.path, cover_specs)
             end
         end
@@ -903,40 +867,9 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     FileChooser._updateItemsBuildUI = function(self, ...)
         local leaf_info = getMetadataLeafInfo(self.path)
         if leaf_info then
-            debugLogItemTable("tabs.coverbrowser.before_build_ui", self.path, self.item_table)
             extractVisibleLeafCovers(self)
         end
-        local result = FileChooser__updateItemsBuildUI(self, ...)
-        if leaf_info then
-            debugLog(
-                "tabs.coverbrowser.after_build_ui",
-                "path", self.path,
-                "item_group", self.item_group and #self.item_group,
-                "layout", self.layout and #self.layout,
-                "items_to_update", self.items_to_update and #self.items_to_update,
-                "page", self.page,
-                "perpage", self.perpage
-            )
-            if self.layout then
-                for row_idx, row in ipairs(self.layout) do
-                    for col_idx, widget in ipairs(row) do
-                        local entry = widget.entry
-                        debugLog(
-                            "tabs.coverbrowser.layout",
-                            "row", row_idx,
-                            "col", col_idx,
-                            "entry_idx", entry and entry.idx,
-                            "text", entry and entry.text,
-                            "path", entry and entry.path,
-                            "bookinfo_found", widget.bookinfo_found,
-                            "is_directory", widget.is_directory,
-                            "filepath", widget.filepath
-                        )
-                    end
-                end
-            end
-        end
-        return result
+        return FileChooser__updateItemsBuildUI(self, ...)
     end
 end)
 
