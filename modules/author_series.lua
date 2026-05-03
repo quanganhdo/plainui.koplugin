@@ -562,6 +562,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local Size = require("ui/size")
     local TextWidget = require("ui/widget/textwidget")
     local Screen = Device.screen
+    local N_ = _.ngettext
 
     -- Add BookInfoManager:getMatchingMetadataValues()
     function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
@@ -943,6 +944,138 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         paintSeriesIndexBadge(bb, badge_x, badge_y, badge)
     end
 
+    local function getVirtualLeafCountText(count)
+        count = tonumber(count) or 0
+        return T(N_("1 book", "%1 books", count), count)
+    end
+
+    local function formatSeriesIndex(series_index)
+        if type(series_index) == "number" and series_index == math.floor(series_index) then
+            return tostring(math.floor(series_index))
+        end
+        return tostring(series_index)
+    end
+
+    local function getVirtualSeriesListLine(bookinfo, series_index)
+        if not bookinfo or not bookinfo.series or series_index == nil then
+            return
+        end
+        return T("%1 - %2", bookinfo.series, formatSeriesIndex(series_index))
+    end
+
+    local function cloneBookInfoWithVirtualSeriesLine(bookinfo, series_index)
+        local series_line = getVirtualSeriesListLine(bookinfo, series_index)
+        if not series_line then
+            return bookinfo
+        end
+
+        local clone = {}
+        for k, v in pairs(bookinfo) do
+            clone[k] = v
+        end
+        clone.authors = clone.authors and series_line .. "\n" .. clone.authors or series_line
+        -- Avoid appending the same series again if CoverBrowser's global
+        -- series_mode setting is enabled.
+        clone.series = nil
+        clone.series_index = nil
+        return clone
+    end
+
+    local function withVirtualSeriesListMetadata(item, update_func, ...)
+        if not item.entry or item.entry.virtual_series_index == nil then
+            return update_func(item, ...)
+        end
+
+        local filepath = item.filepath or item.entry.file or item.entry.path
+        local original_getBookInfo = BookInfoManager.getBookInfo
+        BookInfoManager.getBookInfo = function(self, book_filepath, ...)
+            local bookinfo = original_getBookInfo(self, book_filepath, ...)
+            if book_filepath == filepath then
+                return cloneBookInfoWithVirtualSeriesLine(bookinfo, item.entry.virtual_series_index)
+            end
+            return bookinfo
+        end
+
+        local ok, results = pcall(function(...)
+            return table.pack(update_func(item, ...))
+        end, ...)
+        BookInfoManager.getBookInfo = original_getBookInfo
+        if not ok then
+            error(results)
+        end
+        return table.unpack(results, 1, results.n)
+    end
+
+    local function getVirtualLeafListKind(item)
+        local _base_dir, _meta_name, filters = parseVirtualPath(item.entry and item.entry.path)
+        return filters and filters[1] and filters[1][1]
+    end
+
+    local function getVirtualLeafListTitle(item)
+        local kind = getVirtualLeafListKind(item)
+        if kind == "authors" or kind == "series" then
+            return item.entry.virtual_leaf_title
+        end
+    end
+
+    local function cloneBookInfoForVirtualLeaf(bookinfo, title, kind)
+        if not bookinfo then
+            return bookinfo
+        end
+        local clone = {}
+        for k, v in pairs(bookinfo) do
+            clone[k] = v
+        end
+        clone.title = title
+        if kind == "authors" then
+            clone.authors = nil
+        end
+        clone.series = nil
+        clone.series_index = nil
+        clone.ignore_meta = false
+        clone._no_provider = true
+        return clone
+    end
+
+    local function withVirtualLeafListCountLayout(item, update_func, ...)
+        if not item.entry or not item.entry.is_virtual_metadata_leaf or not item.entry.virtual_leaf_count then
+            return update_func(item, ...)
+        end
+
+        local filepath = item.entry.representative_filepath or item.filepath or item.entry.file or item.entry.path
+        local original_mandatory = item.mandatory
+        local original_getSetting = BookInfoManager.getSetting
+        local original_getBookInfo = BookInfoManager.getBookInfo
+
+        item.mandatory = getVirtualLeafCountText(item.entry.virtual_leaf_count)
+        BookInfoManager.getSetting = function(self, key, ...)
+            if key == "hide_file_info" then
+                return false
+            elseif key == "hide_page_info" then
+                return true
+            end
+            return original_getSetting(self, key, ...)
+        end
+        BookInfoManager.getBookInfo = function(self, book_filepath, ...)
+            local bookinfo = original_getBookInfo(self, book_filepath, ...)
+            if book_filepath == filepath then
+                return cloneBookInfoForVirtualLeaf(bookinfo, getVirtualLeafListTitle(item), getVirtualLeafListKind(item))
+            end
+            return bookinfo
+        end
+
+        local ok, results = pcall(function(...)
+            return table.pack(update_func(item, ...))
+        end, ...)
+        item.mandatory = original_mandatory
+        BookInfoManager.getSetting = original_getSetting
+        BookInfoManager.getBookInfo = original_getBookInfo
+        if not ok then
+            error(results)
+        end
+        return table.unpack(results, 1, results.n)
+    end
+
     local function withRepresentativeFileEntry(item, update_func, suppress_text, ...)
         if not item.entry or not item.entry.is_virtual_metadata_leaf or not item.entry.representative_filepath then
             return update_func(item, ...)
@@ -989,7 +1122,11 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
 
     local ListMenuItem_update = ListMenuItem.update
     function ListMenuItem:update(...)
-        return withRepresentativeFileEntry(self, ListMenuItem_update, false, ...)
+        return withVirtualSeriesListMetadata(self, function(item, ...)
+            return withVirtualLeafListCountLayout(item, function(inner_item, ...)
+                return withRepresentativeFileEntry(inner_item, ListMenuItem_update, false, ...)
+            end, ...)
+        end, ...)
     end
 end)
 
