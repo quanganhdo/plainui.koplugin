@@ -36,6 +36,18 @@ local FRONTLIGHT_OFF_SYMBOL = "☀"
 local WIFI_ON_SYMBOL = ""
 local WIFI_OFF_SYMBOL = ""
 
+local function decodeVirtualPathValue(fragment)
+    if fragment == EMPTY_VALUE_SYMBOL then
+        return EMPTY_VALUE_SYMBOL
+    end
+    if fragment == "%EMPTY%" then
+        return ""
+    end
+    return (fragment:gsub("%%(%x%x)", function(hex)
+        return string.char(tonumber(hex, 16))
+    end))
+end
+
 local function findVirtualRoot(path)
     if path then
         return path:find("/" .. VIRTUAL_ROOT_SYMBOL, 1, true)
@@ -64,10 +76,7 @@ local function getMetadataLeafInfo(path)
         return
     end
 
-    local title = fragments[2]
-    if title == EMPTY_VALUE_SYMBOL then
-        title = EMPTY_VALUE_SYMBOL
-    end
+    local title = decodeVirtualPathValue(fragments[2])
 
     return {
         title = title,
