@@ -1,0 +1,46 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to upload the release asset to
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    name: Package plugin
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Build release zip
+        run: |
+          set -euo pipefail
+
+          staging_dir="$(mktemp -d)"
+          mkdir -p "$staging_dir/plainui.koplugin"
+
+          rsync -a \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.DS_Store' \
+            ./ "$staging_dir/plainui.koplugin/"
+
+          (
+            cd "$staging_dir"
+            zip -r "$GITHUB_WORKSPACE/plainui.koplugin.zip" plainui.koplugin
+          )
+
+      - name: Upload release asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG_NAME: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release upload "$TAG_NAME" plainui.koplugin.zip --clobber
