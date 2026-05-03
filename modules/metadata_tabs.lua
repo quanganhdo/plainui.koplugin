@@ -178,7 +178,7 @@ local function getBatteryText()
     else
         batt_symbol = powerd:getBatterySymbol(powerd:isCharged(), powerd:isCharging(), batt_lvl)
     end
-    return batt_symbol .. batt_lvl .. "%"
+    return batt_symbol
 end
 
 local function getWifiText()
@@ -371,14 +371,13 @@ function MetadataTabsTitleBar:init()
     self.tab_label_height = self.books_button.label_container.dimen.h
     local function getStatusWidths()
         local powerd = Device:getPowerDevice()
-        local max_level = Device:hasAuxBattery() and 200 or 100
         local battery_candidates = {
-            max_level .. "%",
+            "",
         }
         if Device:hasBattery() then
-            table.insert(battery_candidates, powerd:getBatterySymbol(true, false, 100) .. max_level .. "%")
-            table.insert(battery_candidates, powerd:getBatterySymbol(false, true, 100) .. max_level .. "%")
-            table.insert(battery_candidates, powerd:getBatterySymbol(false, false, 100) .. max_level .. "%")
+            table.insert(battery_candidates, powerd:getBatterySymbol(true, false, 100))
+            table.insert(battery_candidates, powerd:getBatterySymbol(false, true, 100))
+            table.insert(battery_candidates, powerd:getBatterySymbol(false, false, 100))
         end
 
         local icon_width = measureTextWidth({
