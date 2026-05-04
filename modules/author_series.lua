@@ -64,6 +64,7 @@ local representative_file_cache = {}
 local virtual_metadata_values_cache = {}
 local virtual_matching_files_cache = {}
 local virtual_cache_base_dir
+local representative_random_seeded = false
 
 local function encodeVirtualPathValue(value)
     if value == false or value == nil then
@@ -113,6 +114,17 @@ local function ensureVirtualCacheBaseDir(base_dir)
         clearVirtualCaches()
         virtual_cache_base_dir = base_dir
     end
+end
+
+local function ensureRepresentativeRandomSeeded()
+    if representative_random_seeded then
+        return
+    end
+    representative_random_seeded = true
+    math.randomseed(os.time())
+    math.random()
+    math.random()
+    math.random()
 end
 
 local function findVirtualRoot(path)
@@ -995,7 +1007,15 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filters))
             virtual_matching_files_cache[path] = matching_files
         end
-        local filepath = matching_files[1] and matching_files[1][1] or false
+        local filepath = false
+        if #matching_files > 0 then
+            local representative_idx = 1
+            if getVirtualLeafSortMode(filters) ~= "series" then
+                ensureRepresentativeRandomSeeded()
+                representative_idx = math.random(#matching_files)
+            end
+            filepath = matching_files[representative_idx] and matching_files[representative_idx][1] or false
+        end
         representative_file_cache[path] = filepath
         return filepath or nil
     end
