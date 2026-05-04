@@ -29,7 +29,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local text_widget = TextWidget:new{
             text = "\u{2713}",
             face = complete_face,
-            fgcolor = Blitbuffer.COLOR_WHITE,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         }
         local text_size = text_widget:getSize()
         local padding = Screen:scaleBySize(3)
@@ -38,9 +38,9 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             margin = 0,
             padding = padding,
             bordersize = math.max(1, Size.line.thin),
-            color = Blitbuffer.COLOR_WHITE,
+            color = Blitbuffer.COLOR_BLACK,
             radius = math.floor((inner_side + padding * 2) / 2) + 1,
-            background = Blitbuffer.COLOR_BLACK,
+            background = Blitbuffer.COLOR_WHITE,
             CenterContainer:new{
                 dimen = Geom:new{ w = inner_side, h = inner_side },
                 text_widget,

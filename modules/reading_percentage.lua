@@ -36,19 +36,21 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
         local text_widget = TextWidget:new{
             text = text,
             face = percentage_face,
-            fgcolor = Blitbuffer.COLOR_WHITE,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         }
         local text_size = text_widget:getSize()
+        local border = math.max(1, Screen:scaleBySize(1))
         local padding_h = Screen:scaleBySize(3)
         local padding_top = Screen:scaleBySize(2)
         local padding_bottom = Screen:scaleBySize(3)
-        local badge_w = text_size.w + 2 * padding_h
-        local badge_h = text_size.h + padding_top + padding_bottom
+        local badge_w = text_size.w + 2 * padding_h + 2 * border
+        local badge_h = text_size.h + padding_top + padding_bottom + 2 * border
         local badge = {
             text_widget = text_widget,
             text_size = text_size,
             width = badge_w,
             height = badge_h,
+            border = border,
             padding_top = padding_top,
         }
         function badge:getSize()
@@ -59,9 +61,10 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     end
 
     local function paintReadingPercentageBadge(bb, x, y, badge)
-        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_WHITE)
+        bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_BLACK)
         local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
-        local text_y = y + badge.padding_top
+        local text_y = y + badge.border + badge.padding_top
         badge.text_widget:paintTo(bb, text_x, text_y)
     end
 

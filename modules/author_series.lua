@@ -703,7 +703,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local badge_min_text = TextWidget:new{
         text = "99",
         face = badge_face,
-        fgcolor = Blitbuffer.COLOR_WHITE,
+        fgcolor = Blitbuffer.COLOR_BLACK,
     }
     local badge_min_text_w = badge_min_text:getSize().w
     local function getVirtualLeafBadge(count)
@@ -714,7 +714,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local text_widget = TextWidget:new{
             text = text,
             face = badge_face,
-            fgcolor = Blitbuffer.COLOR_WHITE,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         }
         local text_size = text_widget:getSize()
         local padding_h = Screen:scaleBySize(4)
@@ -728,9 +728,9 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             padding_left = padding_h,
             padding_right = padding_h,
             bordersize = math.max(1, Size.line.thin),
-            color = Blitbuffer.COLOR_WHITE,
+            color = Blitbuffer.COLOR_BLACK,
             radius = math.floor((inner_h + padding_v * 2) / 2) + 1,
-            background = Blitbuffer.COLOR_BLACK,
+            background = Blitbuffer.COLOR_WHITE,
             CenterContainer:new{
                 dimen = Geom:new{ w = inner_w, h = inner_h },
                 text_widget,
@@ -895,7 +895,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local check_widget = TextWidget:new{
             text = "\u{2713}",
             face = series_index_face,
-            fgcolor = Blitbuffer.COLOR_WHITE,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         }
         local check_size = check_widget:getSize()
         check_widget:free()
@@ -914,7 +914,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local text_widget = TextWidget:new{
             text = text,
             face = series_index_face,
-            fgcolor = Blitbuffer.COLOR_WHITE,
+            fgcolor = Blitbuffer.COLOR_BLACK,
         }
         local text_size = text_widget:getSize()
         local border = math.max(1, Size.line.thin)
@@ -936,8 +936,8 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local function paintSeriesIndexBadge(bb, x, y, badge)
-        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_BLACK)
-        bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_WHITE)
+        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_WHITE)
+        bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_BLACK)
         local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
         local text_y = y + math.floor((badge.height - badge.text_size.h) / 2)
         badge.text_widget:paintTo(bb, text_x, text_y)
