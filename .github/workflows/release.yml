@@ -26,13 +26,11 @@ jobs:
           set -euo pipefail
 
           staging_dir="$(mktemp -d)"
-          mkdir -p "$staging_dir/plainui.koplugin"
+          plugin_dir="$staging_dir/plainui.koplugin"
+          mkdir -p "$plugin_dir/modules"
 
-          rsync -a \
-            --exclude '.git' \
-            --exclude '.github' \
-            --exclude '.DS_Store' \
-            ./ "$staging_dir/plainui.koplugin/"
+          cp _meta.lua main.lua README.md VERSION LICENSE "$plugin_dir/"
+          cp modules/*.lua "$plugin_dir/modules/"
 
           (
             cd "$staging_dir"
