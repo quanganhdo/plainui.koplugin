@@ -688,7 +688,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local function getSeriesIndexBadge(series_index)
-        local text = tostring(series_index)
+        local text = "#" .. tostring(series_index)
         if series_index_badge_cache[text] then
             return series_index_badge_cache[text]
         end
