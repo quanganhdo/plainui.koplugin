@@ -22,60 +22,24 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
+local VirtualPath = require("modules.virtual_path")
 local _ = require("gettext")
 local Screen = Device.screen
 local Size = require("ui/size")
 
 local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
-local VIRTUAL_ROOT_SYMBOL = "\u{e257}"
-local AUTHOR_SYMBOL = "\u{f2c0}"
-local SERIES_SYMBOL = "\u{ecd7}"
-local TAG_SYMBOL = "\u{f412}"
-local COLLECTION_SYMBOL = "\u{f02d}"
-local EMPTY_VALUE_SYMBOL = "\u{2205}"
+local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
+local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
+local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
+local COLLECTION_SYMBOL = VirtualPath.COLLECTION_SYMBOL
 local NIGHT_MODE_SYMBOL = "◐"
 local FRONTLIGHT_SYMBOL = "☼"
 local FRONTLIGHT_OFF_SYMBOL = "☀"
 local WIFI_ON_SYMBOL = ""
 local WIFI_OFF_SYMBOL = ""
 
-local function decodeVirtualPathValue(fragment)
-    if fragment == EMPTY_VALUE_SYMBOL then
-        return EMPTY_VALUE_SYMBOL
-    end
-    if fragment == "%EMPTY%" then
-        return ""
-    end
-    return (fragment:gsub("%%(%x%x)", function(hex)
-        return string.char(tonumber(hex, 16))
-    end))
-end
-
-local function getCollectionTitle(collection_name)
-    return collection_name == "favorites" and _("Favorites") or collection_name
-end
-
-local function findVirtualRoot(path)
-    if path then
-        return path:find("/" .. VIRTUAL_ROOT_SYMBOL, 1, true)
-    end
-end
-
-local function getVirtualFragments(path)
-    local _root_start, root_end = findVirtualRoot(path)
-    if not root_end then
-        return
-    end
-
-    local fragments = {}
-    for fragment in path:sub(root_end + 1):gmatch("[^/]+") do
-        table.insert(fragments, fragment)
-    end
-    return fragments
-end
-
 local function getMetadataLeafInfo(path)
-    local fragments = getVirtualFragments(path)
+    local fragments = VirtualPath.getFragments(path)
     if not fragments or #fragments < 2 then
         return
     end
@@ -86,9 +50,11 @@ local function getMetadataLeafInfo(path)
         return
     end
 
-    local title = decodeVirtualPathValue(fragments[2])
+    local title = VirtualPath.decodeValue(fragments[2])
     if fragments[1] == COLLECTION_SYMBOL then
-        title = getCollectionTitle(title)
+        title = VirtualPath.getCollectionTitle(title)
+    else
+        title = VirtualPath.displayValue(title)
     end
 
     return {
@@ -99,10 +65,7 @@ end
 
 local function getVirtualBaseDir(file_manager)
     local path = file_manager.file_chooser and file_manager.file_chooser.path
-    local root_start = findVirtualRoot(path)
-    if root_start then
-        return path:sub(1, root_start - 1)
-    end
+    return VirtualPath.getVirtualBaseDir(path)
 end
 
 local function openBooks(file_manager)
@@ -122,7 +85,7 @@ end
 
 local function getSelectedTabKey(file_manager)
     local path = file_manager and file_manager.file_chooser and file_manager.file_chooser.path
-    local fragments = getVirtualFragments(path)
+    local fragments = VirtualPath.getFragments(path)
     if not fragments then
         return "books"
     end
@@ -142,7 +105,7 @@ end
 
 local function getSelectedMoreKind(file_manager)
     local path = file_manager and file_manager.file_chooser and file_manager.file_chooser.path
-    local fragments = getVirtualFragments(path)
+    local fragments = VirtualPath.getFragments(path)
     if not fragments then
         return
     end

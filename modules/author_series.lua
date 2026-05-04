@@ -17,30 +17,31 @@ local T = ffiUtil.template
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
 local ReadCollection = require("readcollection")
+local VirtualPath = require("modules.virtual_path")
 
 local VIRTUAL_ITEMS = {
     ROOT = {
-        symbol = "\u{e257}",
+        symbol = VirtualPath.ROOT_SYMBOL,
     },
     AUTHOR = {
         browse_text = _("Browse by author"),
         db_column = "authors",
-        symbol = "\u{f2c0}",
+        symbol = VirtualPath.AUTHOR_SYMBOL,
     },
     SERIES = {
         browse_text = _("Browse by series"),
         db_column = "series",
-        symbol = "\u{ecd7}",
+        symbol = VirtualPath.SERIES_SYMBOL,
     },
     KEYWORD = {
         browse_text = _("Browse by tag"),
         db_column = "keywords",
-        symbol = "\u{f412}",
+        symbol = VirtualPath.KEYWORD_SYMBOL,
     },
     COLLECTION = {
         browse_text = _("Browse by collection"),
         db_column = "collections",
-        symbol = "\u{f02d}",
+        symbol = VirtualPath.COLLECTION_SYMBOL,
     },
 }
 
@@ -50,46 +51,20 @@ local VIRTUAL_SUBITEMS_ORDERED = {
     VIRTUAL_ITEMS.KEYWORD,
     VIRTUAL_ITEMS.COLLECTION,
 }
-local VIRTUAL_ROOT_SYMBOL = VIRTUAL_ITEMS.ROOT.symbol
+local VIRTUAL_ROOT_SYMBOL = VirtualPath.ROOT_SYMBOL
 local VIRTUAL_SYMBOLS = {}
-for k, v in pairs(VIRTUAL_ITEMS) do
+for _k, v in pairs(VIRTUAL_ITEMS) do
     VIRTUAL_SYMBOLS[v.symbol] = v
 end
-
 local VIRTUAL_PATH_TYPE_ROOT = "VIRTUAL_PATH_TYPE_ROOT"
 local VIRTUAL_PATH_TYPE_META_VALUES_LIST = "VIRTUAL_PATH_TYPE_META_VALUES_LIST"
 local VIRTUAL_PATH_TYPE_MATCHING_FILES = "VIRTUAL_PATH_TYPE_MATCHING_FILES"
-local EMPTY_VALUE_SYMBOL = "\u{2205}"
+local EMPTY_VALUE_SYMBOL = VirtualPath.EMPTY_VALUE_SYMBOL
 local representative_file_cache = {}
 local virtual_metadata_values_cache = {}
 local virtual_matching_files_cache = {}
 local virtual_cache_base_dir
 local representative_random_seeded = false
-
-local function encodeVirtualPathValue(value)
-    if value == false or value == nil then
-        return EMPTY_VALUE_SYMBOL
-    end
-    value = tostring(value)
-    if value == "" then
-        return "%EMPTY%"
-    end
-    return (value:gsub("([^A-Za-z0-9%._%-%~])", function(char)
-        return string.format("%%%02X", char:byte())
-    end))
-end
-
-local function decodeVirtualPathValue(fragment)
-    if fragment == EMPTY_VALUE_SYMBOL then
-        return false
-    end
-    if fragment == "%EMPTY%" then
-        return ""
-    end
-    return (fragment:gsub("%%(%x%x)", function(hex)
-        return string.char(tonumber(hex, 16))
-    end))
-end
 
 local function clearVirtualCaches()
     representative_file_cache = {}
@@ -127,74 +102,11 @@ local function ensureRepresentativeRandomSeeded()
     math.random()
 end
 
-local function findVirtualRoot(path)
-    if not path then
-        return
-    end
-    return path:find("/" .. VIRTUAL_ROOT_SYMBOL, 1, true)
-end
-
-local function parseVirtualPath(path)
-    local root_start, root_end = findVirtualRoot(path)
-    if not root_start then
-        return
-    end
-    local base_dir = path:sub(1, root_start - 1)
-    local virtual_path = path:sub(root_end + 1)
-
-    local fragments = {}
-    for fragment in util.gsplit(virtual_path, "/") do
-        if fragment ~= "" then
-            table.insert(fragments, fragment)
-        end
-    end
-
-    local meta_name
-    local filters = {}
-    local filters_seen = {}
-    local cur_value
-    while #fragments > 0 do
-        local fragment = table.remove(fragments)
-        local meta = VIRTUAL_SYMBOLS[fragment]
-        if meta then
-            if meta == VIRTUAL_ITEMS.ROOT then
-                do end
-            else
-                local db_meta_name = meta.db_column
-                if cur_value ~= nil then
-                    table.insert(filters, { db_meta_name, cur_value })
-                    if not filters_seen[db_meta_name] then
-                        filters_seen[db_meta_name] = {}
-                    end
-                    filters_seen[db_meta_name][cur_value] = true
-                else
-                    meta_name = db_meta_name
-                end
-            end
-        else
-            cur_value = decodeVirtualPathValue(fragment)
-        end
-    end
-    return base_dir, meta_name, filters, filters_seen
-end
-
-local function getVirtualBaseDir(path)
-    if not path then
-        return
-    end
-    local root_start = findVirtualRoot(path)
-    if root_start then
-        return path:sub(1, root_start - 1)
-    end
-    return path
-end
-
-local function getVirtualBrowsePath(base_dir, item)
-    if not base_dir or not item then
-        return
-    end
-    return string.format("%s/%s/%s", base_dir, VIRTUAL_ROOT_SYMBOL, item.symbol)
-end
+local encodeVirtualPathValue = VirtualPath.encodeValue
+local parseVirtualPath = VirtualPath.parse
+local getVirtualBaseDir = VirtualPath.getBaseDir
+local getVirtualBrowsePath = VirtualPath.getBrowsePath
+local findVirtualRoot = VirtualPath.findRoot
 
 local function virtualTextLess(a, b)
     if a == b then
@@ -207,12 +119,7 @@ local function virtualTextLess(a, b)
     return ffiUtil.strcoll(a, b)
 end
 
-local function getCollectionTitle(collection_name)
-    if collection_name == false or collection_name == nil then
-        return EMPTY_VALUE_SYMBOL
-    end
-    return collection_name == ReadCollection.default_collection_name and _("Favorites") or collection_name
-end
+local getCollectionTitle = VirtualPath.getCollectionTitle
 
 local function isFileInBaseDir(filepath, base_dir)
     if not filepath or not base_dir then
@@ -464,16 +371,13 @@ end
 -- Add FileChooser:getVirtualList()
 function FileChooser:getVirtualList(path, collate)
     local dirs, files = {}, {}
-    local base_dir, virtual_root, virtual_path = path:match("(.-)/("..VIRTUAL_ROOT_SYMBOL..")(.*)")
-    if not virtual_root then
+    local base_dir = VirtualPath.getVirtualBaseDir(path)
+    if not base_dir then
         return dirs, files
     end
     ensureVirtualCacheBaseDir(base_dir)
-    local fragments = {}
-    for fragment in util.gsplit(virtual_path, "/") do
-        table.insert(fragments, fragment)
-    end
-    if #fragments == 0 or fragments[#fragments] == VIRTUAL_ROOT_SYMBOL then
+    local fragments = VirtualPath.getFragments(path) or {}
+    if #fragments == 0 then
         for i, v in ipairs(VIRTUAL_SUBITEMS_ORDERED) do
             item = true
             if collate then -- when collate == nil count only to display in folder mandatory
@@ -493,32 +397,9 @@ function FileChooser:getVirtualList(path, collate)
     end
 
     -- We have arguments
-    local meta_name
-    local filters = {}
-    local filters_seen = {}
-    local cur_value
-    while #fragments > 0 do
-        local fragment = table.remove(fragments)
-        local meta = VIRTUAL_SYMBOLS[fragment]
-        if meta then
-            if meta == VIRTUAL_ITEMS.ROOT then
-                do end -- do nothing
-            else
-                local db_meta_name = meta.db_column
-                if cur_value ~= nil then
-                    table.insert(filters, {db_meta_name, cur_value})
-                    if not filters_seen[db_meta_name] then
-                        filters_seen[db_meta_name] = {}
-                    end
-                    filters_seen[db_meta_name][cur_value] = true
-                else
-                    meta_name = db_meta_name
-                end
-            end
-        else
-            cur_value = decodeVirtualPathValue(fragment)
-        end
-    end
+    local _parsed_base_dir, meta_name, filters, filters_seen = parseVirtualPath(path)
+    filters = filters or {}
+    filters_seen = filters_seen or {}
     if meta_name then
         local matching_values = virtual_metadata_values_cache[path]
         if not matching_values then
