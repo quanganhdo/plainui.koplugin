@@ -671,8 +671,6 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local Device = require("device")
     local Font = require("ui/font")
     local Geom = require("ui/geometry")
-    local CenterContainer = require("ui/widget/container/centercontainer")
-    local FrameContainer = require("ui/widget/container/framecontainer")
     local MosaicMenu = require("mosaicmenu")
     local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
     local ListMenu = require("listmenu")
@@ -681,6 +679,8 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local TextWidget = require("ui/widget/textwidget")
     local Screen = Device.screen
     local N_ = _.ngettext
+    local OVERLAY_LIGHTEN_FACTOR = 0.60
+    local OVERLAY_LIGHTEN_COLOR = Blitbuffer.Color8A(0xFF, math.floor(0xFF * OVERLAY_LIGHTEN_FACTOR + 0.5))
 
     local function refreshCollections()
         if ReadCollection._read then
@@ -1043,23 +1043,68 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local padding_v = Screen:scaleBySize(2)
         local inner_w = math.max(badge_min_text_w, text_size.w)
         local inner_h = text_size.h
-        local badge = FrameContainer:new{
-            margin = 0,
-            padding_top = padding_v,
-            padding_bottom = padding_v,
-            padding_left = padding_h,
-            padding_right = padding_h,
-            bordersize = math.max(1, Size.line.thin),
-            color = Blitbuffer.COLOR_BLACK,
-            radius = math.floor((inner_h + padding_v * 2) / 2) + 1,
-            background = Blitbuffer.COLOR_WHITE,
-            CenterContainer:new{
-                dimen = Geom:new{ w = inner_w, h = inner_h },
-                text_widget,
-            },
+        local border = math.max(1, Size.line.thin)
+        local badge_h = inner_h + 2 * padding_v + 2 * border
+        local badge_w = math.max(badge_h, inner_w + 2 * padding_h + 2 * border)
+        local badge = {
+            text_widget = text_widget,
+            text_size = text_size,
+            width = badge_w,
+            height = badge_h,
+            border = border,
+            radius = math.floor(badge_h / 2),
         }
+        function badge:getSize()
+            return Geom:new{ w = self.width, h = self.height }
+        end
         badge_cache[text] = badge
         return badge
+    end
+
+    local function lightenRoundedRect(bb, x, y, w, h, radius)
+        radius = math.floor(math.min(radius or 0, w / 2, h / 2))
+        if radius <= 0 then
+            bb:lightenRect(x, y, w, h, OVERLAY_LIGHTEN_FACTOR)
+            return
+        end
+
+        local r2 = radius * radius
+        local left_cx = radius - 0.5
+        local right_cx = w - radius - 0.5
+        local top_cy = radius - 0.5
+        local bottom_cy = h - radius - 0.5
+        for dy = 0, h - 1 do
+            local cy
+            if dy < radius then
+                cy = top_cy
+            elseif dy >= h - radius then
+                cy = bottom_cy
+            end
+            for dx = 0, w - 1 do
+                local cx
+                if dx < radius then
+                    cx = left_cx
+                elseif dx >= w - radius then
+                    cx = right_cx
+                end
+                if not cx or not cy
+                        or (dx + 0.5 - cx) * (dx + 0.5 - cx) + (dy + 0.5 - cy) * (dy + 0.5 - cy) <= r2 then
+                    bb:setPixelBlend(x + dx, y + dy, OVERLAY_LIGHTEN_COLOR)
+                end
+            end
+        end
+    end
+
+    local function paintTranslucentBadge(bb, x, y, badge)
+        lightenRoundedRect(bb, x, y, badge.width, badge.height, badge.radius)
+        bb:paintBorder(
+            x, y, badge.width, badge.height, badge.border,
+            Blitbuffer.COLOR_BLACK, badge.radius,
+            G_reader_settings:nilOrTrue("anti_alias_ui")
+        )
+        local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
+        local text_y = y + math.floor((badge.height - badge.text_size.h) / 2)
+        badge.text_widget:paintTo(bb, text_x, text_y)
     end
 
     local function measureOverlayText(text, face)
@@ -1151,7 +1196,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local overlay_h = math.max(1, math.min(h - 2 * border, text_h + 2 * padding_v))
         local overlay_x = x + border
         local overlay_y = y + border + math.floor((h - 2 * border - overlay_h) / 2)
-        bb:lightenRect(overlay_x, overlay_y, overlay_w, overlay_h, 0.60)
+        bb:lightenRect(overlay_x, overlay_y, overlay_w, overlay_h, OVERLAY_LIGHTEN_FACTOR)
         if border > 0 then
             bb:paintRect(overlay_x, overlay_y, overlay_w, border, Blitbuffer.COLOR_BLACK)
             bb:paintRect(overlay_x, overlay_y + overlay_h - border, overlay_w, border, Blitbuffer.COLOR_BLACK)
@@ -1202,7 +1247,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             badge_x = tx + tw - badge_size.w - Screen:scaleBySize(5)
         end
         local badge_y = ty + th - badge_size.h - Screen:scaleBySize(5)
-        badge:paintTo(bb, badge_x, badge_y)
+        paintTranslucentBadge(bb, badge_x, badge_y, badge)
     end
 
     local series_index_badge_cache = {}
@@ -1258,11 +1303,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local function paintSeriesIndexBadge(bb, x, y, badge)
-        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_WHITE)
-        bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_BLACK)
-        local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
-        local text_y = y + math.floor((badge.height - badge.text_size.h) / 2)
-        badge.text_widget:paintTo(bb, text_x, text_y)
+        paintTranslucentBadge(bb, x, y, badge)
     end
 
     local function paintVirtualSeriesIndexBadge(item, bb)

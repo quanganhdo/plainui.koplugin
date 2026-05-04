@@ -16,6 +16,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
 
     local percentage_badge_cache = {}
     local percentage_face = Font:getFace("infont", 13)
+    local OVERLAY_LIGHTEN_FACTOR = 0.60
 
     local function getReadingPercentageText(percent_finished)
         local percent = math.floor((percent_finished or 0) * 100 + 0.5)
@@ -61,7 +62,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     end
 
     local function paintReadingPercentageBadge(bb, x, y, badge)
-        bb:paintRect(x, y, badge.width, badge.height, Blitbuffer.COLOR_WHITE)
+        bb:lightenRect(x, y, badge.width, badge.height, OVERLAY_LIGHTEN_FACTOR)
         bb:paintBorder(x, y, badge.width, badge.height, badge.border, Blitbuffer.COLOR_BLACK)
         local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
         local text_y = y + badge.border + badge.padding_top
