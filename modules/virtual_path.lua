@@ -3,6 +3,8 @@
 
 local VirtualPath = {}
 
+local FilterState = require("modules.filter_state")
+
 VirtualPath.ROOT_SYMBOL = "\u{e257}"
 VirtualPath.AUTHOR_SYMBOL = "\u{f2c0}"
 VirtualPath.SERIES_SYMBOL = "\u{ecd7}"
@@ -103,30 +105,24 @@ function VirtualPath.parse(path)
     local base_dir = path:sub(1, root_start - 1)
     local fragments = VirtualPath.getFragments(path) or {}
 
-    local meta_name
-    local filters = {}
-    local filters_seen = {}
-    local cur_value
-    while #fragments > 0 do
-        local fragment = table.remove(fragments)
+    local state = FilterState.new(base_dir)
+    local pending_dimension
+    for _, fragment in ipairs(fragments) do
         local db_meta_name = META_BY_SYMBOL[fragment]
         if fragment == VirtualPath.ROOT_SYMBOL then
             do end
         elseif db_meta_name then
-            if cur_value ~= nil then
-                table.insert(filters, { db_meta_name, cur_value })
-                if not filters_seen[db_meta_name] then
-                    filters_seen[db_meta_name] = {}
-                end
-                filters_seen[db_meta_name][cur_value] = true
-            else
-                meta_name = db_meta_name
-            end
+            pending_dimension = db_meta_name
+        elseif pending_dimension then
+            FilterState.addFilter(state, pending_dimension, VirtualPath.decodeValue(fragment))
+            pending_dimension = nil
         else
-            cur_value = VirtualPath.decodeValue(fragment)
+            do end
         end
     end
-    return base_dir, meta_name, filters, filters_seen
+    state.active_dimension = pending_dimension
+
+    return base_dir, state.active_dimension, state
 end
 
 return VirtualPath

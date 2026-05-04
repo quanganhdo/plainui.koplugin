@@ -130,16 +130,21 @@ local function sortVirtualMetadataValues(values, meta_name)
     end)
 end
 
-local function getVirtualLeafSortMode(filters)
-    if not filters or #filters == 0 then
+local function getVirtualLeafEntry(filter_state)
+    local trail = filter_state and filter_state.trail
+    return trail and trail[#trail]
+end
+
+local function getVirtualLeafSortMode(filter_state)
+    local leaf = getVirtualLeafEntry(filter_state)
+    if not leaf then
         return
     end
-    local first_filter = filters[1] and filters[1][1]
-    if first_filter == "authors" then
+    if leaf.dimension == "authors" then
         return "author"
-    elseif first_filter == "series" then
+    elseif leaf.dimension == "series" then
         return "series"
-    elseif first_filter == "keywords" then
+    elseif leaf.dimension == "keywords" then
         return "title"
     end
 end
@@ -193,15 +198,16 @@ local function getVirtualSubtitle(path)
     end
 
     local _dir, last_part = util.splitFilePathName(path)
-    local _base_dir, meta_name, filters = parseVirtualPath(path)
+    local _base_dir, meta_name, filter_state = parseVirtualPath(path)
     local labels = {
         authors = _("Authors"),
         series = _("Series"),
         keywords = _("Tags"),
     }
 
-    if filters and #filters > 0 then
-        local value = filters[1][2]
+    local leaf = getVirtualLeafEntry(filter_state)
+    if leaf then
+        local value = leaf.value
         if value == false then
             return "\u{2205}"
         end
@@ -343,19 +349,18 @@ function FileChooser:getVirtualList(path, collate)
     end
 
     -- We have arguments
-    local _parsed_base_dir, meta_name, filters, filters_seen = parseVirtualPath(path)
-    filters = filters or {}
-    filters_seen = filters_seen or {}
+    local _parsed_base_dir, meta_name, filter_state = parseVirtualPath(path)
     if meta_name then
         local matching_values = virtual_metadata_values_cache[path]
         if not matching_values then
-            matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filters)
+            matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state)
             sortVirtualMetadataValues(matching_values, meta_name)
             virtual_metadata_values_cache[path] = matching_values
         end
+        local selected = filter_state and filter_state.selected and filter_state.selected[meta_name]
         for i, v in ipairs(matching_values) do
-            -- Ignore those already present in the current filters
-            if not filters_seen[meta_name] or not filters_seen[meta_name][v[1]] then
+            -- Ignore values already selected in this dimension.
+            if not selected or not selected[v[1]] then
                 local fake_attributes = {
                     mode = "directory",
                     modification = 0,
@@ -381,16 +386,17 @@ function FileChooser:getVirtualList(path, collate)
     else
         local matching_files = virtual_matching_files_cache[path]
         if not matching_files then
-            matching_files = self.ui.coverbrowser:getMatchingFiles(base_dir, filters)
-            sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filters))
+            matching_files = self.ui.coverbrowser:getMatchingFiles(base_dir, filter_state)
+            sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filter_state))
             virtual_matching_files_cache[path] = matching_files
         end
+        local leaf_sort_mode = getVirtualLeafSortMode(filter_state)
         for i, v in ipairs(matching_files) do
             local fullpath, f = unpack(v)
             local attributes = lfs.attributes(fullpath)
             if attributes and attributes.mode == "file" and self:show_file(f, fullpath) then
                 local item = self:getListItem(path, f, fullpath, attributes, collate)
-                if getVirtualLeafSortMode(filters) == "series" and v.series_index then
+                if leaf_sort_mode == "series" and v.series_index then
                     item.virtual_series_index = v.series_index
                 end
                 table.insert(files, item)
@@ -510,23 +516,43 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local N_ = _.ngettext
 
     -- Add BookInfoManager:getMatchingMetadataValues()
-    function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
-        return MetadataSource.getMatchingMetadataValues(self, base_dir, meta_name, filters)
+    function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state)
+        return MetadataSource.getMatchingMetadataValues(self, base_dir, meta_name, filter_state)
+    end
+
+    -- Add BookInfoManager:getFacetValues()
+    function BookInfoManager:getFacetValues(base_dir, meta_name, filter_state, options)
+        return MetadataSource.getFacetValues(self, base_dir, meta_name, filter_state, options)
+    end
+
+    -- Add BookInfoManager:getAllFacetValues()
+    function BookInfoManager:getAllFacetValues(base_dir, filter_state, options)
+        return MetadataSource.getAllFacetValues(self, base_dir, filter_state, options)
     end
 
     -- Add BookInfoManager:getMatchingFiles()
-    function BookInfoManager:getMatchingFiles(base_dir, filters, limit)
-        return MetadataSource.getMatchingFiles(self, base_dir, filters, limit)
+    function BookInfoManager:getMatchingFiles(base_dir, filter_state, limit)
+        return MetadataSource.getMatchingFiles(self, base_dir, filter_state, limit)
     end
 
     -- Add CoverBrowser:getMatchingMetadataValues()
-    function CoverBrowser:getMatchingMetadataValues(base_dir, meta_name, filters)
-        return BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
+    function CoverBrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state)
+        return BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state)
+    end
+
+    -- Add CoverBrowser:getFacetValues()
+    function CoverBrowser:getFacetValues(base_dir, meta_name, filter_state, options)
+        return BookInfoManager:getFacetValues(base_dir, meta_name, filter_state, options)
+    end
+
+    -- Add CoverBrowser:getAllFacetValues()
+    function CoverBrowser:getAllFacetValues(base_dir, filter_state, options)
+        return BookInfoManager:getAllFacetValues(base_dir, filter_state, options)
     end
 
     -- Add CoverBrowser:getMatchingFiles()
-    function CoverBrowser:getMatchingFiles(base_dir, filters)
-        return BookInfoManager:getMatchingFiles(base_dir, filters)
+    function CoverBrowser:getMatchingFiles(base_dir, filter_state)
+        return BookInfoManager:getMatchingFiles(base_dir, filter_state)
     end
 
     function CoverBrowser:getRepresentativeFilepath(path)
@@ -534,8 +560,9 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             return representative_file_cache[path] or nil
         end
 
-        local base_dir, meta_name, filters = parseVirtualPath(path)
-        if not base_dir or meta_name ~= nil or not filters or #filters == 0 then
+        local base_dir, meta_name, filter_state = parseVirtualPath(path)
+        local leaf_sort_mode = getVirtualLeafSortMode(filter_state)
+        if not base_dir or meta_name ~= nil or not leaf_sort_mode then
             representative_file_cache[path] = false
             return nil
         end
@@ -543,14 +570,14 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         ensureVirtualCacheBaseDir(base_dir)
         local matching_files = virtual_matching_files_cache[path]
         if not matching_files then
-            matching_files = BookInfoManager:getMatchingFiles(base_dir, filters)
-            sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filters))
+            matching_files = BookInfoManager:getMatchingFiles(base_dir, filter_state)
+            sortVirtualMatchingFiles(matching_files, leaf_sort_mode)
             virtual_matching_files_cache[path] = matching_files
         end
         local filepath = false
         if #matching_files > 0 then
             local representative_idx = 1
-            if getVirtualLeafSortMode(filters) ~= "series" then
+            if leaf_sort_mode ~= "series" then
                 ensureRepresentativeRandomSeeded()
                 representative_idx = math.random(#matching_files)
             end
@@ -752,8 +779,9 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local function getVirtualLeafListKind(item)
-        local _base_dir, _meta_name, filters = parseVirtualPath(item.entry and item.entry.path)
-        return filters and filters[1] and filters[1][1]
+        local _base_dir, _meta_name, filter_state = parseVirtualPath(item.entry and item.entry.path)
+        local leaf = getVirtualLeafEntry(filter_state)
+        return leaf and leaf.dimension
     end
 
     local function getVirtualLeafListTitle(item)

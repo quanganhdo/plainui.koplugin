@@ -3,6 +3,7 @@
 
 local ffiUtil = require("ffi/util")
 local DocumentRegistry = require("document/documentregistry")
+local FilterState = require("modules.filter_state")
 local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
 
@@ -10,16 +11,43 @@ local T = ffiUtil.template
 
 local MetadataSource = {}
 
-function MetadataSource.getMatchingMetadataValues(book_info_manager, base_dir, meta_name, filters)
+local function addFilterSql(sql, vars, dimension, value)
+    local definition = FilterState.DIMENSIONS[dimension]
+    if not definition then
+        return sql
+    end
+
+    local column = definition.column
+    if value == false then
+        return T("%1 and %2 is NULL", sql, column)
+    elseif definition.multi_value then
+        sql = T("%1 and instr('\n'||%2||'\n', ?) > 0", sql, column)
+        table.insert(vars, "\n"..value.."\n")
+        return sql
+    end
+
+    sql = T("%1 and %2=?", sql, column)
+    table.insert(vars, value)
+    return sql
+end
+
+function MetadataSource.getFacetValues(book_info_manager, base_dir, meta_name, filter_state, options)
     local results = {}
     local grouped = {}
-    if meta_name ~= "authors" and meta_name ~= "series" and meta_name ~= "keywords" then
+    if not FilterState.isDimension(meta_name) then
         return results
     end
 
-    local matching_files = MetadataSource.getMatchingFiles(book_info_manager, base_dir, filters)
+    local state = filter_state or FilterState.new(base_dir, meta_name)
+    local query_state = state
+    if options and options.exclude_dimension then
+        query_state = FilterState.withoutDimension(state, options.exclude_dimension)
+    end
+
+    local matching_files = MetadataSource.getMatchingFiles(book_info_manager, base_dir, query_state)
     for _, row in ipairs(matching_files) do
-        if meta_name == "authors" or meta_name == "keywords" then
+        local definition = FilterState.DIMENSIONS[meta_name]
+        if definition.multi_value then
             local values = row[meta_name]
             if values and values:find("\n", 1, true) then
                 for value in util.gsplit(values, "\n") do
@@ -37,32 +65,40 @@ function MetadataSource.getMatchingMetadataValues(book_info_manager, base_dir, m
         end
     end
 
+    local selected = state.selected and state.selected[meta_name]
     for value, nb in pairs(grouped) do
-        table.insert(results, {value, nb})
+        table.insert(results, {
+            value,
+            nb,
+            selected = selected and selected[value] or false,
+        })
     end
     return results
 end
 
-function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filters, limit)
+function MetadataSource.getAllFacetValues(book_info_manager, base_dir, filter_state, options)
+    local state = filter_state or FilterState.new(base_dir)
+    local results = {}
+    for _, dimension in ipairs(FilterState.ORDERED_DIMENSIONS) do
+        results[dimension] = MetadataSource.getFacetValues(book_info_manager, base_dir, dimension, state, options)
+    end
+    return results
+end
+
+function MetadataSource.getMatchingMetadataValues(book_info_manager, base_dir, meta_name, filter_state)
+    return MetadataSource.getFacetValues(book_info_manager, base_dir, meta_name, filter_state)
+end
+
+function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filter_state, limit)
     if not base_dir then
         return {}
     end
-    filters = filters or {}
+    local state = filter_state or FilterState.new(base_dir)
     local vars = {}
     local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ? and unsupported is NULL"
     table.insert(vars, base_dir..'/*')
-    for _, filter in ipairs(filters) do
-        local name, value = filter[1], filter[2]
-        if value == false then
-            sql = T("%1 and %2 is NULL", sql, name)
-        elseif name == "authors" or name == "keywords" then
-            -- authors and keywords may have multiple values, separated by \n
-            sql = T("%1 and '\n'||%2||'\n' GLOB ?", sql, name)
-            table.insert(vars, "*\n"..value.."\n*")
-        else
-            sql = T("%1 and %2=?", sql, name)
-            table.insert(vars, value)
-        end
+    for _, filter in ipairs(state.trail or {}) do
+        sql = addFilterSql(sql, vars, filter.dimension, filter.value)
     end
     sql = sql .. " order by directory asc, filename asc"
     if limit then

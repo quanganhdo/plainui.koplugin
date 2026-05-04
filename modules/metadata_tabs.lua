@@ -32,17 +32,18 @@ local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
 
 local function getMetadataLeafInfo(path)
-    local fragments = VirtualPath.getFragments(path)
-    if not fragments or #fragments < 2 then
-        return
-    end
-    if fragments[1] ~= AUTHOR_SYMBOL
-            and fragments[1] ~= SERIES_SYMBOL
-            and fragments[1] ~= TAG_SYMBOL then
+    local _base_dir, active_dimension, filter_state = VirtualPath.parse(path)
+    if active_dimension then
         return
     end
 
-    local title = VirtualPath.displayValue(VirtualPath.decodeValue(fragments[2]))
+    local trail = filter_state and filter_state.trail
+    local leaf = trail and trail[#trail]
+    if not leaf then
+        return
+    end
+
+    local title = VirtualPath.displayValue(leaf.value)
 
     return {
         title = title,
