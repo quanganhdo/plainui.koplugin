@@ -2,6 +2,7 @@
 -- SPDX-License-Identifier: MIT
 
 local ffiUtil = require("ffi/util")
+local DocumentRegistry = require("document/documentregistry")
 local lfs = require("libs/libkoreader-lfs")
 local util = require("util")
 
@@ -48,7 +49,7 @@ function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filters, l
     end
     filters = filters or {}
     local vars = {}
-    local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ?"
+    local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ? and unsupported is NULL"
     table.insert(vars, base_dir..'/*')
     for _, filter in ipairs(filters) do
         local name, value = filter[1], filter[2]
@@ -76,7 +77,7 @@ function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filters, l
         if not row then
             break
         end
-        if lfs.attributes(row[1], "mode") == "file" then
+        if lfs.attributes(row[1], "mode") == "file" and DocumentRegistry:hasProvider(row[1]) then
             table.insert(results, {
                 row[1],
                 row[2],
