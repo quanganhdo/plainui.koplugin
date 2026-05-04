@@ -668,6 +668,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local BookInfoManager = require("bookinfomanager")
     local Blitbuffer = require("ffi/blitbuffer")
     local BD = require("ui/bidi")
+    local CoverBadge = require("modules.cover_badge")
     local Device = require("device")
     local Font = require("ui/font")
     local Geom = require("ui/geometry")
@@ -679,8 +680,6 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local TextWidget = require("ui/widget/textwidget")
     local Screen = Device.screen
     local N_ = _.ngettext
-    local OVERLAY_LIGHTEN_FACTOR = 0.60
-    local OVERLAY_LIGHTEN_COLOR = Blitbuffer.Color8A(0xFF, math.floor(0xFF * OVERLAY_LIGHTEN_FACTOR + 0.5))
 
     local function refreshCollections()
         if ReadCollection._read then
@@ -1027,84 +1026,29 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         face = badge_face,
         fgcolor = Blitbuffer.COLOR_BLACK,
     }
-    local badge_min_text_w = badge_min_text:getSize().w
+    local badge_min_text_size = badge_min_text:getSize()
     local function getVirtualLeafBadge(count)
         local text = tostring(count or "")
         if badge_cache[text] then
             return badge_cache[text]
         end
-        local text_widget = TextWidget:new{
-            text = text,
-            face = badge_face,
-            fgcolor = Blitbuffer.COLOR_BLACK,
-        }
-        local text_size = text_widget:getSize()
         local padding_h = Screen:scaleBySize(4)
         local padding_v = Screen:scaleBySize(2)
-        local inner_w = math.max(badge_min_text_w, text_size.w)
-        local inner_h = text_size.h
         local border = math.max(1, Size.line.thin)
+        local inner_h = badge_min_text_size.h
         local badge_h = inner_h + 2 * padding_v + 2 * border
-        local badge_w = math.max(badge_h, inner_w + 2 * padding_h + 2 * border)
-        local badge = {
-            text_widget = text_widget,
-            text_size = text_size,
-            width = badge_w,
-            height = badge_h,
+        local badge = CoverBadge.newTextBadge{
+            text = text,
+            face = badge_face,
+            padding_h = padding_h,
+            padding_v = padding_v,
             border = border,
+            min_width = math.max(badge_h, badge_min_text_size.w + 2 * padding_h + 2 * border),
+            height = badge_h,
             radius = math.floor(badge_h / 2),
         }
-        function badge:getSize()
-            return Geom:new{ w = self.width, h = self.height }
-        end
         badge_cache[text] = badge
         return badge
-    end
-
-    local function lightenRoundedRect(bb, x, y, w, h, radius)
-        radius = math.floor(math.min(radius or 0, w / 2, h / 2))
-        if radius <= 0 then
-            bb:lightenRect(x, y, w, h, OVERLAY_LIGHTEN_FACTOR)
-            return
-        end
-
-        local r2 = radius * radius
-        local left_cx = radius - 0.5
-        local right_cx = w - radius - 0.5
-        local top_cy = radius - 0.5
-        local bottom_cy = h - radius - 0.5
-        for dy = 0, h - 1 do
-            local cy
-            if dy < radius then
-                cy = top_cy
-            elseif dy >= h - radius then
-                cy = bottom_cy
-            end
-            for dx = 0, w - 1 do
-                local cx
-                if dx < radius then
-                    cx = left_cx
-                elseif dx >= w - radius then
-                    cx = right_cx
-                end
-                if not cx or not cy
-                        or (dx + 0.5 - cx) * (dx + 0.5 - cx) + (dy + 0.5 - cy) * (dy + 0.5 - cy) <= r2 then
-                    bb:setPixelBlend(x + dx, y + dy, OVERLAY_LIGHTEN_COLOR)
-                end
-            end
-        end
-    end
-
-    local function paintTranslucentBadge(bb, x, y, badge)
-        lightenRoundedRect(bb, x, y, badge.width, badge.height, badge.radius)
-        bb:paintBorder(
-            x, y, badge.width, badge.height, badge.border,
-            Blitbuffer.COLOR_BLACK, badge.radius,
-            G_reader_settings:nilOrTrue("anti_alias_ui")
-        )
-        local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
-        local text_y = y + math.floor((badge.height - badge.text_size.h) / 2)
-        badge.text_widget:paintTo(bb, text_x, text_y)
     end
 
     local function measureOverlayText(text, face)
@@ -1196,7 +1140,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local overlay_h = math.max(1, math.min(h - 2 * border, text_h + 2 * padding_v))
         local overlay_x = x + border
         local overlay_y = y + border + math.floor((h - 2 * border - overlay_h) / 2)
-        bb:lightenRect(overlay_x, overlay_y, overlay_w, overlay_h, OVERLAY_LIGHTEN_FACTOR)
+        bb:lightenRect(overlay_x, overlay_y, overlay_w, overlay_h, CoverBadge.LIGHTEN_FACTOR)
         if border > 0 then
             bb:paintRect(overlay_x, overlay_y, overlay_w, border, Blitbuffer.COLOR_BLACK)
             bb:paintRect(overlay_x, overlay_y + overlay_h - border, overlay_w, border, Blitbuffer.COLOR_BLACK)
@@ -1247,7 +1191,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             badge_x = tx + tw - badge_size.w - Screen:scaleBySize(5)
         end
         local badge_y = ty + th - badge_size.h - Screen:scaleBySize(5)
-        paintTranslucentBadge(bb, badge_x, badge_y, badge)
+        CoverBadge.paint(bb, badge_x, badge_y, badge)
     end
 
     local series_index_badge_cache = {}
@@ -1278,32 +1222,24 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             return series_index_badge_cache[text]
         end
 
-        local text_widget = TextWidget:new{
-            text = text,
-            face = series_index_face,
-            fgcolor = Blitbuffer.COLOR_BLACK,
-        }
-        local text_size = text_widget:getSize()
         local border = math.max(1, Size.line.thin)
         local padding_h = Screen:scaleBySize(4)
         local height = getSeriesIndexBadgeHeight()
-        local width = math.max(height, text_size.w + 2 * padding_h + 2 * border)
-        local badge = {
-            text_widget = text_widget,
-            text_size = text_size,
-            width = width,
+        local badge = CoverBadge.newTextBadge{
+            text = text,
+            face = series_index_face,
+            padding_h = padding_h,
+            padding_v = 0,
             height = height,
             border = border,
+            min_width = height,
         }
-        function badge:getSize()
-            return Geom:new{ w = self.width, h = self.height }
-        end
         series_index_badge_cache[text] = badge
         return badge
     end
 
     local function paintSeriesIndexBadge(bb, x, y, badge)
-        paintTranslucentBadge(bb, x, y, badge)
+        CoverBadge.paint(bb, x, y, badge)
     end
 
     local function paintVirtualSeriesIndexBadge(item, bb)
