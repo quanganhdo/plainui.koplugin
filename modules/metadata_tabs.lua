@@ -16,8 +16,8 @@ local InfoMessage = require("ui/widget/infomessage")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
-local PluginLoader = require("pluginloader")
 local RightContainer = require("ui/widget/container/rightcontainer")
+local StatusIndicators = require("modules.status_indicators")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -32,11 +32,6 @@ local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
 local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
 local COLLECTION_SYMBOL = VirtualPath.COLLECTION_SYMBOL
-local NIGHT_MODE_SYMBOL = "◐"
-local FRONTLIGHT_SYMBOL = "☼"
-local FRONTLIGHT_OFF_SYMBOL = "☀"
-local WIFI_ON_SYMBOL = ""
-local WIFI_OFF_SYMBOL = ""
 
 local function getMetadataLeafInfo(path)
     local fragments = VirtualPath.getFragments(path)
@@ -133,99 +128,6 @@ local function getBackTitleBarInfo(file_manager)
     }
 end
 
-local function getBatteryText()
-    if not Device:hasBattery() then
-        return ""
-    end
-
-    local powerd = Device:getPowerDevice()
-    local batt_lvl = powerd:getCapacity()
-    local batt_symbol
-    if Device:hasAuxBattery() and powerd:isAuxBatteryConnected() then
-        batt_lvl = batt_lvl + powerd:getAuxCapacity()
-        batt_symbol = powerd:getBatterySymbol(powerd:isAuxCharged(), powerd:isAuxCharging(), batt_lvl / 2)
-    else
-        batt_symbol = powerd:getBatterySymbol(powerd:isCharged(), powerd:isCharging(), batt_lvl)
-    end
-    return batt_symbol
-end
-
-local function getWifiText()
-    if not Device:hasWifiToggle() then
-        return ""
-    end
-    if NetworkMgr.is_wifi_on == nil then
-        NetworkMgr:queryNetworkState()
-    end
-    if NetworkMgr.is_wifi_on then
-        return WIFI_ON_SYMBOL
-    end
-    return WIFI_OFF_SYMBOL
-end
-
-local function getFrontlightText()
-    if Device:hasFrontlight() then
-        local powerd = Device:getPowerDevice()
-        return powerd:isFrontlightOn() and FRONTLIGHT_SYMBOL or FRONTLIGHT_OFF_SYMBOL
-    end
-    return ""
-end
-
-local function showBatteryInfo()
-    if not Device:hasBattery() then
-        return
-    end
-    if PluginLoader.loaded_plugins and PluginLoader:isPluginLoaded("batterystat") then
-        UIManager:broadcastEvent(Event:new("ShowBatteryStatistics"))
-        return
-    end
-
-    UIManager:show(InfoMessage:new{
-        text = getBatteryText(),
-    })
-end
-
-local function toggleWifi(refresh_callback)
-    if not Device:hasWifiToggle() then
-        return
-    end
-
-    NetworkMgr:queryNetworkState()
-    local complete_callback = function()
-        NetworkMgr:queryNetworkState()
-        if refresh_callback then
-            refresh_callback()
-        end
-    end
-    if NetworkMgr.is_wifi_on and NetworkMgr.is_connected then
-        NetworkMgr:toggleWifiOff(complete_callback, true)
-    elseif NetworkMgr.is_wifi_on then
-        NetworkMgr:promptWifi(complete_callback, nil, true)
-    else
-        NetworkMgr:toggleWifiOn(complete_callback, nil, true)
-    end
-end
-
-local function showWifiNetworks(refresh_callback)
-    if not Device:hasWifiToggle() then
-        return
-    end
-
-    NetworkMgr:queryNetworkState()
-    local complete_callback = function()
-        NetworkMgr:queryNetworkState()
-        if refresh_callback then
-            refresh_callback()
-        end
-    end
-    if NetworkMgr.is_wifi_on then
-        NetworkMgr.wifi_toggle_long_press = true
-        NetworkMgr:reconnectOrShowNetworkMenu(complete_callback, true)
-    else
-        NetworkMgr:toggleWifiOn(complete_callback, true, true)
-    end
-end
-
 local ModeLeftContainer = LeftContainer:extend{
     visible_func = nil,
 }
@@ -269,19 +171,6 @@ function MetadataTabsTitleBar:init()
 
     self.file_manager = self.file_manager or FileManager.instance
     local file_manager = self.file_manager
-    local function measureTextWidth(candidates, padding_h)
-        local face = Font:getFace(self.tab_font_face, self.tab_font_size)
-        local width = 0
-        for _, text in ipairs(candidates) do
-            local widget = TextWidget:new{
-                text = text,
-                face = face,
-            }
-            width = math.max(width, widget:getSize().w)
-            widget:free()
-        end
-        return width + 2 * padding_h
-    end
     local function getTabWidth(text)
         local face = Font:getFace(self.tab_font_face, self.tab_font_size)
         local normal_widget = TextWidget:new{
@@ -342,32 +231,6 @@ function MetadataTabsTitleBar:init()
     self.authors_button = self.authors_tab.button
     self.more_button = self.more_tab.button
     self.tab_label_height = self.books_button.label_container.dimen.h
-    local function getStatusWidths()
-        local powerd = Device:getPowerDevice()
-        local battery_candidates = {
-            "",
-        }
-        if Device:hasBattery() then
-            table.insert(battery_candidates, powerd:getBatterySymbol(true, false, 100))
-            table.insert(battery_candidates, powerd:getBatterySymbol(false, true, 100))
-            table.insert(battery_candidates, powerd:getBatterySymbol(false, false, 100))
-        end
-
-        local icon_width = measureTextWidth({
-            NIGHT_MODE_SYMBOL,
-            FRONTLIGHT_SYMBOL,
-            FRONTLIGHT_OFF_SYMBOL,
-            WIFI_ON_SYMBOL,
-            WIFI_OFF_SYMBOL,
-        }, self.status_padding_h)
-        return {
-            night_mode = icon_width,
-            frontlight = icon_width,
-            wifi = icon_width,
-            battery = measureTextWidth(battery_candidates, self.status_padding_h),
-        }
-    end
-
     self.tabs_group = HorizontalGroup:new{
         align = "bottom",
         allow_mirroring = false,
@@ -407,14 +270,14 @@ function MetadataTabsTitleBar:init()
     table.insert(self, self.tabs_container)
     self:updateSelectedTab(false)
 
-    local status_widths = getStatusWidths()
+    local status_widths = StatusIndicators.getWidths(self.tab_font_face, self.tab_font_size, self.status_padding_h)
     self.night_mode_width = status_widths.night_mode
     self.frontlight_width = status_widths.frontlight
     self.wifi_width = status_widths.wifi
     self.battery_width = status_widths.battery
     self.status_width = self.night_mode_width + self.frontlight_width + self.wifi_width + self.battery_width + 3 * self.status_gap
     self.night_mode_button = Button:new{
-        text = NIGHT_MODE_SYMBOL,
+        text = StatusIndicators.NIGHT_MODE_SYMBOL,
         text_font_face = self.tab_font_face,
         text_font_size = self.tab_font_size,
         text_font_bold = false,
@@ -429,7 +292,7 @@ function MetadataTabsTitleBar:init()
         show_parent = self.show_parent,
     }
     self.frontlight_button = Button:new{
-        text = getFrontlightText(),
+        text = StatusIndicators.getFrontlightText(),
         text_font_face = self.tab_font_face,
         text_font_size = self.tab_font_size,
         text_font_bold = false,
@@ -452,7 +315,7 @@ function MetadataTabsTitleBar:init()
         show_parent = self.show_parent,
     }
     self.wifi_button = Button:new{
-        text = getWifiText(),
+        text = StatusIndicators.getWifiText(),
         text_font_face = self.tab_font_face,
         text_font_size = self.tab_font_size,
         text_font_bold = false,
@@ -462,19 +325,19 @@ function MetadataTabsTitleBar:init()
         padding_h = self.status_padding_h,
         padding_v = self.tab_padding_v,
         callback = function()
-            toggleWifi(function()
+            StatusIndicators.toggleWifi(function()
                 self:updateStatusIndicators()
             end)
         end,
         hold_callback = function()
-            showWifiNetworks(function()
+            StatusIndicators.showWifiNetworks(function()
                 self:updateStatusIndicators()
             end)
         end,
         show_parent = self.show_parent,
     }
     self.battery_button = Button:new{
-        text = getBatteryText(),
+        text = StatusIndicators.getBatteryText(),
         text_font_face = self.tab_font_face,
         text_font_size = self.tab_font_size,
         text_font_bold = false,
@@ -484,7 +347,7 @@ function MetadataTabsTitleBar:init()
         padding_h = self.status_padding_h,
         padding_v = self.tab_padding_v,
         hold_callback = function()
-            showBatteryInfo()
+            StatusIndicators.showBatteryInfo()
             self:updateStatusIndicators()
         end,
         show_parent = self.show_parent,
@@ -668,9 +531,9 @@ function MetadataTabsTitleBar:updateStatusIndicators(refresh)
         return
     end
 
-    local battery_text = getBatteryText()
-    local wifi_text = getWifiText()
-    local frontlight_text = getFrontlightText()
+    local battery_text = StatusIndicators.getBatteryText()
+    local wifi_text = StatusIndicators.getWifiText()
+    local frontlight_text = StatusIndicators.getFrontlightText()
     if self.battery_text == battery_text
             and self.wifi_text == wifi_text
             and self.frontlight_text == frontlight_text then
