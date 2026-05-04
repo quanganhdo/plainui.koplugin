@@ -16,6 +16,7 @@ local T = ffiUtil.template
 
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
+local ReadCollection = require("readcollection")
 
 local VIRTUAL_ITEMS = {
     ROOT = {
@@ -31,11 +32,23 @@ local VIRTUAL_ITEMS = {
         db_column = "series",
         symbol = "\u{ecd7}",
     },
+    KEYWORD = {
+        browse_text = _("Browse by tag"),
+        db_column = "keywords",
+        symbol = "\u{f412}",
+    },
+    COLLECTION = {
+        browse_text = _("Browse by collection"),
+        db_column = "collections",
+        symbol = "\u{f02d}",
+    },
 }
 
 local VIRTUAL_SUBITEMS_ORDERED = {
     VIRTUAL_ITEMS.AUTHOR,
     VIRTUAL_ITEMS.SERIES,
+    VIRTUAL_ITEMS.KEYWORD,
+    VIRTUAL_ITEMS.COLLECTION,
 }
 local VIRTUAL_ROOT_SYMBOL = VIRTUAL_ITEMS.ROOT.symbol
 local VIRTUAL_SYMBOLS = {}
@@ -182,10 +195,47 @@ local function virtualTextLess(a, b)
     return ffiUtil.strcoll(a, b)
 end
 
-local function sortVirtualMetadataValues(values)
+local function getCollectionTitle(collection_name)
+    if collection_name == false or collection_name == nil then
+        return EMPTY_VALUE_SYMBOL
+    end
+    return collection_name == ReadCollection.default_collection_name and _("Favorites") or collection_name
+end
+
+local function isFileInBaseDir(filepath, base_dir)
+    if not filepath or not base_dir then
+        return false
+    end
+    if base_dir == "/" then
+        return filepath:sub(1, 1) == "/"
+    end
+    return filepath:sub(1, #base_dir + 1) == base_dir .. "/"
+end
+
+local function sortVirtualMetadataValues(values, meta_name)
     table.sort(values, function(a, b)
         local av = a[1]
         local bv = b[1]
+        if av == false or av == nil then
+            return false
+        elseif bv == false or bv == nil then
+            return true
+        end
+
+        if meta_name == "keywords" then
+            local ac = a[2] or 0
+            local bc = b[2] or 0
+            if ac ~= bc then
+                return ac > bc
+            end
+        elseif meta_name == "collections" then
+            local ao = a.order or 0
+            local bo = b.order or 0
+            if ao ~= bo then
+                return ao < bo
+            end
+        end
+
         if av == bv then
             return (a[2] or 0) < (b[2] or 0)
         end
@@ -202,6 +252,10 @@ local function getVirtualLeafSortMode(filters)
         return "author"
     elseif first_filter == "series" then
         return "series"
+    elseif first_filter == "collections" then
+        return "collection"
+    elseif first_filter == "keywords" then
+        return "title"
     end
 end
 
@@ -216,6 +270,28 @@ local function sortVirtualMatchingFiles(matching_files, sort_mode)
             if a_series ~= b_series then
                 return virtualTextLess(a_series, b_series)
             end
+        end
+
+        if sort_mode == "collection" then
+            local a_order = a.collection_order
+            local b_order = b.collection_order
+            if a_order ~= b_order then
+                if a_order == nil then
+                    return false
+                elseif b_order == nil then
+                    return true
+                end
+                return a_order < b_order
+            end
+        end
+
+        if sort_mode == "title" then
+            local a_title = a.title or a[2]
+            local b_title = b.title or b[2]
+            if a_title ~= b_title then
+                return virtualTextLess(a_title, b_title)
+            end
+            return virtualTextLess(a[2], b[2])
         end
 
         local a_index = a.series_index
@@ -249,9 +325,14 @@ local function getVirtualSubtitle(path)
     local labels = {
         authors = _("Authors"),
         series = _("Series"),
+        keywords = _("Tags"),
+        collections = _("Collections"),
     }
 
     if filters and #filters > 0 then
+        if filters[1][1] == "collections" then
+            return getCollectionTitle(filters[1][2])
+        end
         local value = filters[1][2]
         if value == false then
             return "\u{2205}"
@@ -280,6 +361,8 @@ end
 
 registerBrowseAction("browse_by_metadata_author", "author", _("Browse by author"))
 registerBrowseAction("browse_by_metadata_series", "series", _("Browse by series"))
+registerBrowseAction("browse_by_metadata_tags", "tags", _("Browse by tag"))
+registerBrowseAction("browse_by_metadata_collections", "collections", _("Browse by collection"))
 
 -- Patch FileManager:setupLayout()
 local FileManager_setupLayout = FileManager.setupLayout
@@ -327,6 +410,10 @@ function FileManager:onBrowseByMetadata(kind)
         item = VIRTUAL_ITEMS.AUTHOR
     elseif kind == "series" then
         item = VIRTUAL_ITEMS.SERIES
+    elseif kind == "tags" or kind == "keywords" then
+        item = VIRTUAL_ITEMS.KEYWORD
+    elseif kind == "collection" or kind == "collections" then
+        item = VIRTUAL_ITEMS.COLLECTION
     else
         return
     end
@@ -424,7 +511,7 @@ function FileChooser:getVirtualList(path, collate)
         local matching_values = virtual_metadata_values_cache[path]
         if not matching_values then
             matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filters)
-            sortVirtualMetadataValues(matching_values)
+            sortVirtualMetadataValues(matching_values, meta_name)
             virtual_metadata_values_cache[path] = matching_values
         end
         for i, v in ipairs(matching_values) do
@@ -437,7 +524,7 @@ function FileChooser:getVirtualList(path, collate)
                     change = 0,
                     size = i,
                 }
-                local name = v[1] or EMPTY_VALUE_SYMBOL
+                local name = v.display_name or v[1] or EMPTY_VALUE_SYMBOL
                 local this_path = path.."/"..encodeVirtualPathValue(v[1])
                 item = self:getListItem(nil, name, this_path, fake_attributes, collate)
                 item.nb_sub_files = v[2]
@@ -583,25 +670,235 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local Screen = Device.screen
     local N_ = _.ngettext
 
+    local function refreshCollections()
+        if ReadCollection._read then
+            ReadCollection:_read()
+        end
+    end
+
+    local function getCollectedFileSet(base_dir)
+        refreshCollections()
+        local collected = {}
+        for _, collection in pairs(ReadCollection.coll or {}) do
+            for filepath in pairs(collection) do
+                if isFileInBaseDir(filepath, base_dir) and lfs.attributes(filepath, "mode") == "file" then
+                    collected[filepath] = true
+                end
+            end
+        end
+        return collected
+    end
+
+    local function getBaseDirBookInfoRows(self, base_dir)
+        if not base_dir then
+            return {}
+        end
+
+        local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ? order by directory asc, filename asc"
+        self:openDbConnection()
+        local stmt = self.db_conn:prepare(sql)
+        stmt:bind(base_dir..'/*')
+        local rows = {}
+        while true do
+            local row = stmt:step()
+            if not row then
+                break
+            end
+            if lfs.attributes(row[1], "mode") == "file" then
+                table.insert(rows, {
+                    row[1],
+                    row[2],
+                    title = row[3],
+                    authors = row[4],
+                    series = row[5],
+                    series_index = tonumber(row[6]),
+                    keywords = row[7],
+                })
+            end
+        end
+        return rows
+    end
+
+    local function getCollectionFilter(filters)
+        for idx, filter in ipairs(filters or {}) do
+            if filter[1] == "collections" then
+                return filter[2], idx
+            end
+        end
+    end
+
+    local function valueMatchesMultiValueField(field, value)
+        if value == false then
+            return field == nil
+        end
+        if not field then
+            return false
+        end
+        if field:find("\n", 1, true) then
+            for field_value in util.gsplit(field, "\n") do
+                if field_value == value then
+                    return true
+                end
+            end
+            return false
+        end
+        return field == value
+    end
+
+    local function matchingFilePassesFilter(row, filter)
+        local name, value = filter[1], filter[2]
+        if name == "authors" then
+            return valueMatchesMultiValueField(row.authors, value)
+        elseif name == "keywords" then
+            return valueMatchesMultiValueField(row.keywords, value)
+        elseif name == "series" then
+            return value == false and row.series == nil or row.series == value
+        end
+        return true
+    end
+
+    local function makeMatchingFileRow(self, filepath, collection_order)
+        local attributes = lfs.attributes(filepath)
+        if not attributes or attributes.mode ~= "file" then
+            return
+        end
+        local _directory, filename = util.splitFilePathName(filepath)
+        local bookinfo = self:getBookInfo(filepath, false) or {}
+        return {
+            filepath,
+            filename,
+            title = bookinfo.title,
+            authors = bookinfo.authors,
+            series = bookinfo.series,
+            series_index = tonumber(bookinfo.series_index),
+            keywords = bookinfo.keywords,
+            collection_order = collection_order,
+        }
+    end
+
+    local function getMatchingCollectionValues(self, base_dir)
+        refreshCollections()
+        local results = {}
+        for collection_name, collection in pairs(ReadCollection.coll or {}) do
+            local count = 0
+            for filepath in pairs(collection) do
+                if isFileInBaseDir(filepath, base_dir) and lfs.attributes(filepath, "mode") == "file" then
+                    count = count + 1
+                end
+            end
+            if count > 0 then
+                local settings = ReadCollection.coll_settings and ReadCollection.coll_settings[collection_name] or {}
+                table.insert(results, {
+                    collection_name,
+                    count,
+                    display_name = getCollectionTitle(collection_name),
+                    order = settings.order or 0,
+                })
+            end
+        end
+
+        local collected = getCollectedFileSet(base_dir)
+        local uncollected_count = 0
+        for _, row in ipairs(getBaseDirBookInfoRows(self, base_dir)) do
+            if not collected[row[1]] then
+                uncollected_count = uncollected_count + 1
+            end
+        end
+        if uncollected_count > 0 then
+            table.insert(results, {
+                false,
+                uncollected_count,
+                display_name = EMPTY_VALUE_SYMBOL,
+                order = math.huge,
+            })
+        end
+
+        return results
+    end
+
+    local function getCollectionMatchingFiles(self, base_dir, filters, limit)
+        local collection_name, collection_filter_idx = getCollectionFilter(filters)
+        local results = {}
+
+        if collection_name == false then
+            local collected = getCollectedFileSet(base_dir)
+            for _, row in ipairs(getBaseDirBookInfoRows(self, base_dir)) do
+                if not collected[row[1]] then
+                    local passes = true
+                    for idx, filter in ipairs(filters or {}) do
+                        if idx ~= collection_filter_idx and not matchingFilePassesFilter(row, filter) then
+                            passes = false
+                            break
+                        end
+                    end
+                    if passes then
+                        table.insert(results, row)
+                        if limit and #results >= limit then
+                            break
+                        end
+                    end
+                end
+            end
+            return results
+        end
+
+        if not collection_name then
+            return results
+        end
+
+        refreshCollections()
+        local collection = ReadCollection.coll and ReadCollection.coll[collection_name]
+        if not collection then
+            return results
+        end
+
+        for filepath, collection_item in pairs(collection) do
+            if isFileInBaseDir(filepath, base_dir) then
+                local row = makeMatchingFileRow(self, filepath, collection_item.order)
+                if row then
+                    local passes = true
+                    for idx, filter in ipairs(filters or {}) do
+                        if idx ~= collection_filter_idx and not matchingFilePassesFilter(row, filter) then
+                            passes = false
+                            break
+                        end
+                    end
+                    if passes then
+                        table.insert(results, row)
+                        if limit and #results >= limit then
+                            break
+                        end
+                    end
+                end
+            end
+        end
+        return results
+    end
+
     -- Add BookInfoManager:getMatchingMetadataValues()
     function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filters)
         local results = {}
         local grouped = {}
-        if meta_name ~= "authors" and meta_name ~= "series" then
+        if meta_name == "collections" then
+            return getMatchingCollectionValues(self, base_dir)
+        end
+        if meta_name ~= "authors" and meta_name ~= "series" and meta_name ~= "keywords" then
             return results
         end
 
         local matching_files = self:getMatchingFiles(base_dir, filters)
         for _, row in ipairs(matching_files) do
-            if meta_name == "authors" then
-                local authors = row.authors
-                if authors and authors:find("\n") then
-                    for author in util.gsplit(authors, "\n") do
-                        grouped[author] = (grouped[author] or 0) + 1
+            if meta_name == "authors" or meta_name == "keywords" then
+                local values = row[meta_name]
+                if values and values:find("\n", 1, true) then
+                    for value in util.gsplit(values, "\n") do
+                        if value ~= "" then
+                            grouped[value] = (grouped[value] or 0) + 1
+                        end
                     end
                 else
-                    local author = authors or false
-                    grouped[author] = (grouped[author] or 0) + 1
+                    local value = values or false
+                    grouped[value] = (grouped[value] or 0) + 1
                 end
             else
                 local value = row.series or false
@@ -620,15 +917,19 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         if not base_dir then
             return {}
         end
+        local _, collection_filter_idx = getCollectionFilter(filters)
+        if collection_filter_idx then
+            return getCollectionMatchingFiles(self, base_dir, filters, limit)
+        end
         local vars = {}
-        local sql = "select directory||filename, filename, title, authors, series, series_index from bookinfo where directory glob ?"
+        local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ?"
         table.insert(vars, base_dir..'/*')
         for _, filter in ipairs(filters) do
             local name, value = filter[1], filter[2]
             if value == false then
                 sql = T("%1 and %2 is NULL", sql, name)
-            elseif name == "authors" then
-                -- authors may have multiple values, separated by \n
+            elseif name == "authors" or name == "keywords" then
+                -- authors and keywords may have multiple values, separated by \n
                 sql = T("%1 and '\n'||%2||'\n' GLOB ?", sql, name)
                 table.insert(vars, "*\n"..value.."\n*")
             else
@@ -658,6 +959,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
                     authors = row[4],
                     series = row[5],
                     series_index = tonumber(row[6]),
+                    keywords = row[7],
                 })
             end
         end
