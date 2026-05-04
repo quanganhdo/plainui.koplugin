@@ -3,7 +3,6 @@
 
 local userpatch = require("userpatch")
 local Button = require("ui/widget/button")
-local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Event = require("ui/event")
 local FileManager = require("apps/filemanager/filemanager")
@@ -31,7 +30,6 @@ local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
 local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
 local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
-local COLLECTION_SYMBOL = VirtualPath.COLLECTION_SYMBOL
 
 local function getMetadataLeafInfo(path)
     local fragments = VirtualPath.getFragments(path)
@@ -40,17 +38,11 @@ local function getMetadataLeafInfo(path)
     end
     if fragments[1] ~= AUTHOR_SYMBOL
             and fragments[1] ~= SERIES_SYMBOL
-            and fragments[1] ~= TAG_SYMBOL
-            and fragments[1] ~= COLLECTION_SYMBOL then
+            and fragments[1] ~= TAG_SYMBOL then
         return
     end
 
-    local title = VirtualPath.decodeValue(fragments[2])
-    if fragments[1] == COLLECTION_SYMBOL then
-        title = VirtualPath.getCollectionTitle(title)
-    else
-        title = VirtualPath.displayValue(title)
-    end
+    local title = VirtualPath.displayValue(VirtualPath.decodeValue(fragments[2]))
 
     return {
         title = title,
@@ -90,28 +82,12 @@ local function getSelectedTabKey(file_manager)
             return "authors"
         elseif fragment == SERIES_SYMBOL then
             return "series"
-        elseif fragment == TAG_SYMBOL or fragment == COLLECTION_SYMBOL then
-            return "more"
+        elseif fragment == TAG_SYMBOL then
+            return "tags"
         end
     end
 
     return "books"
-end
-
-local function getSelectedMoreKind(file_manager)
-    local path = file_manager and file_manager.file_chooser and file_manager.file_chooser.path
-    local fragments = VirtualPath.getFragments(path)
-    if not fragments then
-        return
-    end
-
-    for _, fragment in ipairs(fragments) do
-        if fragment == TAG_SYMBOL then
-            return "tags"
-        elseif fragment == COLLECTION_SYMBOL then
-            return "collections"
-        end
-    end
 end
 
 local function getBackTitleBarInfo(file_manager)
@@ -223,13 +199,13 @@ function MetadataTabsTitleBar:init()
     self.authors_tab = makeTab("authors", _("Authors"), function()
         browseByMetadata(file_manager, "author")
     end)
-    self.more_tab = makeTab("more", _("More ▾"), function()
-        self:showMoreMenu()
+    self.tags_tab = makeTab("tags", _("Tags"), function()
+        browseByMetadata(file_manager, "tags")
     end)
     self.books_button = self.books_tab.button
     self.series_button = self.series_tab.button
     self.authors_button = self.authors_tab.button
-    self.more_button = self.more_tab.button
+    self.tags_button = self.tags_tab.button
     self.tab_label_height = self.books_button.label_container.dimen.h
     self.tabs_group = HorizontalGroup:new{
         align = "bottom",
@@ -237,7 +213,7 @@ function MetadataTabsTitleBar:init()
         self.books_tab,
         self.series_tab,
         self.authors_tab,
-        self.more_tab,
+        self.tags_tab,
     }
     local tabs_size = self.tabs_group:getSize()
     self.titlebar_height = math.max(self.titlebar_height, tabs_size.h)
@@ -487,45 +463,6 @@ function MetadataTabsTitleBar:onBackTitleTap()
     end
 end
 
-function MetadataTabsTitleBar:showMoreMenu()
-    local file_manager = self.file_manager or FileManager.instance
-    local selected_more_kind = getSelectedMoreKind(file_manager)
-    local dialog
-    local function browse(kind)
-        if dialog then
-            UIManager:close(dialog)
-        end
-        browseByMetadata(file_manager, kind)
-    end
-
-    dialog = ButtonDialog:new{
-        shrink_unneeded_width = true,
-        buttons = {
-            {{
-                text = _("Tags"),
-                align = "left",
-                font_bold = selected_more_kind == "tags",
-                callback = function()
-                    browse("tags")
-                end,
-            }},
-            {{
-                text = _("Collections"),
-                align = "left",
-                font_bold = selected_more_kind == "collections",
-                callback = function()
-                    browse("collections")
-                end,
-            }},
-        },
-        anchor = function()
-            local button = self.more_button
-            return button and button[1] and button[1].dimen or button and button.dimen, true
-        end,
-    }
-    UIManager:show(dialog)
-end
-
 function MetadataTabsTitleBar:updateStatusIndicators(refresh)
     if not self.battery_button then
         return
@@ -572,7 +509,7 @@ function MetadataTabsTitleBar:updateSelectedTab(refresh)
     end
 
     self.selected_tab_key = selected_tab_key
-    for _, tab in ipairs({ self.books_tab, self.series_tab, self.authors_tab, self.more_tab }) do
+    for _, tab in ipairs({ self.books_tab, self.series_tab, self.authors_tab, self.tags_tab }) do
         self:setTabSelected(tab, tab.key == selected_tab_key)
     end
 
@@ -640,7 +577,7 @@ function MetadataTabsTitleBar:generateHorizontalLayout()
         self.books_button,
         self.series_button,
         self.authors_button,
-        self.more_button,
+        self.tags_button,
     }
     table.insert(row, self.night_mode_button)
     table.insert(row, self.frontlight_button)
@@ -657,7 +594,7 @@ function MetadataTabsTitleBar:generateVerticalLayout()
         { self.books_button },
         { self.series_button },
         { self.authors_button },
-        { self.more_button },
+        { self.tags_button },
     }
     table.insert(layout, { self.night_mode_button })
     table.insert(layout, { self.frontlight_button })

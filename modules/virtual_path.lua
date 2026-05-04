@@ -1,23 +1,18 @@
 -- SPDX-FileCopyrightText: 2026 Anh Do
 -- SPDX-License-Identifier: MIT
 
-local ReadCollection = require("readcollection")
-local _ = require("gettext")
-
 local VirtualPath = {}
 
 VirtualPath.ROOT_SYMBOL = "\u{e257}"
 VirtualPath.AUTHOR_SYMBOL = "\u{f2c0}"
 VirtualPath.SERIES_SYMBOL = "\u{ecd7}"
 VirtualPath.KEYWORD_SYMBOL = "\u{f412}"
-VirtualPath.COLLECTION_SYMBOL = "\u{f02d}"
 VirtualPath.EMPTY_VALUE_SYMBOL = "\u{2205}"
 
 local META_BY_SYMBOL = {
     [VirtualPath.AUTHOR_SYMBOL] = "authors",
     [VirtualPath.SERIES_SYMBOL] = "series",
     [VirtualPath.KEYWORD_SYMBOL] = "keywords",
-    [VirtualPath.COLLECTION_SYMBOL] = "collections",
 }
 
 function VirtualPath.encodeValue(value)
@@ -50,13 +45,6 @@ function VirtualPath.displayValue(value)
         return VirtualPath.EMPTY_VALUE_SYMBOL
     end
     return tostring(value)
-end
-
-function VirtualPath.getCollectionTitle(collection_name)
-    if collection_name == false or collection_name == nil then
-        return VirtualPath.EMPTY_VALUE_SYMBOL
-    end
-    return collection_name == ReadCollection.default_collection_name and _("Favorites") or collection_name
 end
 
 function VirtualPath.findRoot(path)

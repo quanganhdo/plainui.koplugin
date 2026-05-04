@@ -38,18 +38,12 @@ local VIRTUAL_ITEMS = {
         db_column = "keywords",
         symbol = VirtualPath.KEYWORD_SYMBOL,
     },
-    COLLECTION = {
-        browse_text = _("Browse by collection"),
-        db_column = "collections",
-        symbol = VirtualPath.COLLECTION_SYMBOL,
-    },
 }
 
 local VIRTUAL_SUBITEMS_ORDERED = {
     VIRTUAL_ITEMS.AUTHOR,
     VIRTUAL_ITEMS.SERIES,
     VIRTUAL_ITEMS.KEYWORD,
-    VIRTUAL_ITEMS.COLLECTION,
 }
 local VIRTUAL_ROOT_SYMBOL = VirtualPath.ROOT_SYMBOL
 local VIRTUAL_SYMBOLS = {}
@@ -119,8 +113,6 @@ local function virtualTextLess(a, b)
     return ffiUtil.strcoll(a, b)
 end
 
-local getCollectionTitle = VirtualPath.getCollectionTitle
-
 local function sortVirtualMetadataValues(values, meta_name)
     table.sort(values, function(a, b)
         local av = a[1]
@@ -129,20 +121,6 @@ local function sortVirtualMetadataValues(values, meta_name)
             return false
         elseif bv == false or bv == nil then
             return true
-        end
-
-        if meta_name == "keywords" then
-            local ac = a[2] or 0
-            local bc = b[2] or 0
-            if ac ~= bc then
-                return ac > bc
-            end
-        elseif meta_name == "collections" then
-            local ao = a.order or 0
-            local bo = b.order or 0
-            if ao ~= bo then
-                return ao < bo
-            end
         end
 
         if av == bv then
@@ -161,8 +139,6 @@ local function getVirtualLeafSortMode(filters)
         return "author"
     elseif first_filter == "series" then
         return "series"
-    elseif first_filter == "collections" then
-        return "collection"
     elseif first_filter == "keywords" then
         return "title"
     end
@@ -178,19 +154,6 @@ local function sortVirtualMatchingFiles(matching_files, sort_mode)
             local b_series = b.series
             if a_series ~= b_series then
                 return virtualTextLess(a_series, b_series)
-            end
-        end
-
-        if sort_mode == "collection" then
-            local a_order = a.collection_order
-            local b_order = b.collection_order
-            if a_order ~= b_order then
-                if a_order == nil then
-                    return false
-                elseif b_order == nil then
-                    return true
-                end
-                return a_order < b_order
             end
         end
 
@@ -235,13 +198,9 @@ local function getVirtualSubtitle(path)
         authors = _("Authors"),
         series = _("Series"),
         keywords = _("Tags"),
-        collections = _("Collections"),
     }
 
     if filters and #filters > 0 then
-        if filters[1][1] == "collections" then
-            return getCollectionTitle(filters[1][2])
-        end
         local value = filters[1][2]
         if value == false then
             return "\u{2205}"
@@ -271,7 +230,6 @@ end
 registerBrowseAction("browse_by_metadata_author", "author", _("Browse by author"))
 registerBrowseAction("browse_by_metadata_series", "series", _("Browse by series"))
 registerBrowseAction("browse_by_metadata_tags", "tags", _("Browse by tag"))
-registerBrowseAction("browse_by_metadata_collections", "collections", _("Browse by collection"))
 
 -- Patch FileManager:setupLayout()
 local FileManager_setupLayout = FileManager.setupLayout
@@ -321,8 +279,6 @@ function FileManager:onBrowseByMetadata(kind)
         item = VIRTUAL_ITEMS.SERIES
     elseif kind == "tags" or kind == "keywords" then
         item = VIRTUAL_ITEMS.KEYWORD
-    elseif kind == "collection" or kind == "collections" then
-        item = VIRTUAL_ITEMS.COLLECTION
     else
         return
     end
