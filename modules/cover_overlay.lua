@@ -5,7 +5,6 @@ local Blitbuffer = require("ffi/blitbuffer")
 local CoverBadge = require("modules.cover_badge")
 local Device = require("device")
 local Font = require("ui/font")
-local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local util = require("util")
 
@@ -62,19 +61,6 @@ local function getLines(text, face, max_width, max_lines)
         end
     end
     return lines
-end
-
-function CoverOverlay.paintStackMarks(bb, x, y, w, h)
-    local line_w = math.max(3, Size.line.medium)
-    local line_h1 = math.floor(h * 0.95)
-    local line_h2 = math.floor(h * 0.90)
-    local line_gap = Screen:scaleBySize(3)
-    local line_x1 = x + w + line_gap
-    local line_x2 = line_x1 + line_w + line_gap
-    local line_y1 = y + math.floor((h - line_h1) / 2)
-    local line_y2 = y + math.floor((h - line_h2) / 2)
-    bb:paintRect(line_x1, line_y1, line_w, line_h1, Blitbuffer.COLOR_GRAY_9)
-    bb:paintRect(line_x2, line_y2, line_w, line_h2, Blitbuffer.COLOR_GRAY_9)
 end
 
 function CoverOverlay.paintTitle(bb, x, y, w, h, border, title)

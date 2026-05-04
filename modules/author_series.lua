@@ -947,7 +947,6 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         local tw = target.dimen.w
         local th = target.dimen.h
         if item._has_cover_image then
-            CoverOverlay.paintStackMarks(bb, tx, ty, tw, th)
             CoverOverlay.paintTitle(bb, tx, ty, tw, th, target.bordersize, item.entry.virtual_leaf_title)
         end
 
