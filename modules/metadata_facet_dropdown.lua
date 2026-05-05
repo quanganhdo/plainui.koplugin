@@ -73,31 +73,35 @@ local function getDropdownState(file_manager)
     }
 end
 
-local function getAvailableMetadataValues(state, dimension)
-    local BookInfoManager = require("bookinfomanager")
-    local values = MetadataSource.getMatchingMetadataValues(
-        BookInfoManager,
-        state.base_dir,
-        dimension.key,
-        state.filter_state
-    )
-    sortMetadataValues(values)
+local function countAvailableValues(values)
     local available_count = 0
     for _, value in ipairs(values) do
         if not value.selected then
             available_count = available_count + 1
         end
     end
-    return values, available_count
+    return available_count
 end
 
-local function getCurrentResultCount(state)
+local function getMetadataValuesWithCount(state, dimension)
     local BookInfoManager = require("bookinfomanager")
-    return #MetadataSource.getMatchingFiles(
+    return MetadataSource.getFacetValuesWithCount(
         BookInfoManager,
         state.base_dir,
+        dimension.key,
         state.filter_state
     )
+end
+
+local function getAvailableMetadataValueCount(state, dimension)
+    local values = getMetadataValuesWithCount(state, dimension)
+    return countAvailableValues(values)
+end
+
+local function getAvailableMetadataValues(state, dimension)
+    local values, result_count = getMetadataValuesWithCount(state, dimension)
+    sortMetadataValues(values)
+    return values, countAvailableValues(values), result_count
 end
 
 local function splitValuesByNarrowing(values, current_result_count)
@@ -151,7 +155,7 @@ local function showDimensionDropdown(file_manager, anchor)
     local buttons = {}
     for _, dimension in ipairs(DIMENSIONS) do
         local dimension_ref = dimension
-        local _values, available_count = getAvailableMetadataValues(state, dimension_ref)
+        local available_count = getAvailableMetadataValueCount(state, dimension_ref)
         if available_count > 0 then
             table.insert(buttons, makeNavigationRow(dimension_ref.label, available_count, function()
                 if dialog then
@@ -188,8 +192,7 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
         return
     end
 
-    local values = getAvailableMetadataValues(state, dimension)
-    local current_result_count = getCurrentResultCount(state)
+    local values, _available_count, current_result_count = getAvailableMetadataValues(state, dimension)
 
     local dialog
     local buttons = {

@@ -1,5 +1,10 @@
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
+local file_check_counts = {
+    attributes = {},
+    providers = {},
+}
+
 package.preload["ffi/util"] = function()
     return {
         template = function(format, ...)
@@ -14,6 +19,7 @@ end
 package.preload["document/documentregistry"] = function()
     return {
         hasProvider = function(_self, path)
+            file_check_counts.providers[path] = (file_check_counts.providers[path] or 0) + 1
             return not path:find("no_provider", 1, true)
         end,
     }
@@ -22,6 +28,7 @@ end
 package.preload["libs/libkoreader-lfs"] = function()
     return {
         attributes = function(path, attr)
+            file_check_counts.attributes[path] = (file_check_counts.attributes[path] or 0) + 1
             if attr == "mode" and not path:find("missing", 1, true) then
                 return "file"
             end
@@ -55,23 +62,31 @@ local assertEqual = TestHelper.assertEqual
 local assertTruthy = TestHelper.assertTruthy
 local test, run = TestHelper.newSuite()
 
+local function resetFileCheckCounts()
+    file_check_counts.attributes = {}
+    file_check_counts.providers = {}
+end
+
 local function makeManager(rows)
+    MetadataSource.clearCache()
+    resetFileCheckCounts()
     local manager = {}
-    local statement = {
-        index = 0,
-        bind = function(self, ...)
-            self.bound = { ... }
-            manager.bound = self.bound
-        end,
-        step = function(self)
-            self.index = self.index + 1
-            return rows[self.index]
-        end,
-    }
 
     manager.db_conn = {
         prepare = function(_self, sql)
             manager.sql = sql
+            manager.prepare_count = (manager.prepare_count or 0) + 1
+            local statement = {
+                index = 0,
+                bind = function(self, ...)
+                    self.bound = { ... }
+                    manager.bound = self.bound
+                end,
+                step = function(self)
+                    self.index = self.index + 1
+                    return rows[self.index]
+                end,
+            }
             return statement
         end,
     }
@@ -253,6 +268,62 @@ test("getFacetValues groups series as a single-value facet", function()
 
     assertEqual(findFacet(results, "Foo")[2], 2)
     assertEqual(findFacet(results, false)[2], 1)
+end)
+
+test("getFacetValuesWithCount reuses matching files across dimensions", function()
+    local manager = makeManager({
+        book("/books/a.epub", "a.epub", "A", "Alice\nBob", "Foo", "1", "tag"),
+        book("/books/b.epub", "b.epub", "B", "Bob", "Bar", "2", "tag"),
+    })
+    local state = FilterState.new("/books")
+
+    local authors, author_count = MetadataSource.getFacetValuesWithCount(manager, "/books", "authors", state)
+    local series, series_count = MetadataSource.getFacetValuesWithCount(manager, "/books", "series", state)
+
+    assertEqual(author_count, 2)
+    assertEqual(series_count, 2)
+    assertEqual(findFacet(authors, "Bob")[2], 2)
+    assertEqual(findFacet(series, "Foo")[2], 1)
+    assertEqual(manager.prepare_count, 1)
+end)
+
+test("getMatchingFiles returns a fresh array wrapper for cached files", function()
+    local manager = makeManager({
+        book("/books/a.epub", "a.epub", "A", "Alice", "Foo", "1", "tag"),
+        book("/books/b.epub", "b.epub", "B", "Bob", "Bar", "2", "tag"),
+    })
+    local state = FilterState.new("/books")
+
+    local first = MetadataSource.getMatchingFiles(manager, "/books", state)
+    table.remove(first, 1)
+    local second = MetadataSource.getMatchingFiles(manager, "/books", state)
+
+    assertEqual(#first, 1)
+    assertEqual(#second, 2)
+    assertEqual(second[1][1], "/books/a.epub")
+    assertEqual(manager.prepare_count, 1)
+end)
+
+test("getMatchingFiles caches file validity across uncached limited queries", function()
+    local manager = makeManager({
+        book("/books/a.epub", "a.epub", "A", "Alice", "Foo", "1", "tag"),
+        book("/books/no_provider.epub", "no_provider.epub", "No Provider", "Alice", "Foo", "2", "tag"),
+        book("/books/notes.txt", "notes.txt", "Notes", nil, nil, nil, nil),
+    })
+    local state = FilterState.new("/books")
+
+    local first = MetadataSource.getMatchingFiles(manager, "/books", state, 10)
+    local second = MetadataSource.getMatchingFiles(manager, "/books", state, 10)
+
+    assertEqual(#first, 1)
+    assertEqual(#second, 1)
+    assertEqual(manager.prepare_count, 2)
+    assertEqual(file_check_counts.attributes["/books/a.epub"], 1)
+    assertEqual(file_check_counts.providers["/books/a.epub"], 1)
+    assertEqual(file_check_counts.attributes["/books/no_provider.epub"], 1)
+    assertEqual(file_check_counts.providers["/books/no_provider.epub"], 1)
+    assertEqual(file_check_counts.attributes["/books/notes.txt"], nil)
+    assertEqual(file_check_counts.providers["/books/notes.txt"], nil)
 end)
 
 test("getFacetValues can exclude a dimension without mutating original state", function()

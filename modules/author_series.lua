@@ -17,6 +17,7 @@ local T = ffiUtil.template
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
 local MetadataSource = require("modules.metadata_source")
+local VirtualLeaf = require("modules.virtual_leaf")
 local VirtualPath = require("modules.virtual_path")
 
 local VIRTUAL_ITEMS = {
@@ -60,7 +61,8 @@ local virtual_matching_files_cache = {}
 local virtual_cache_base_dir
 local representative_random_seeded = false
 
-local function clearVirtualCaches()
+local function clearVirtualCaches(base_dir)
+    MetadataSource.clearCache(base_dir or virtual_cache_base_dir)
     representative_file_cache = {}
     virtual_metadata_values_cache = {}
     virtual_matching_files_cache = {}
@@ -68,7 +70,7 @@ end
 
 local function invalidateVirtualCaches(base_dir)
     if not base_dir or virtual_cache_base_dir == nil or virtual_cache_base_dir == base_dir then
-        clearVirtualCaches()
+        clearVirtualCaches(base_dir)
         if not base_dir then
             virtual_cache_base_dir = nil
         end
@@ -80,7 +82,7 @@ local function ensureVirtualCacheBaseDir(base_dir)
         return
     end
     if virtual_cache_base_dir ~= base_dir then
-        clearVirtualCaches()
+        clearVirtualCaches(virtual_cache_base_dir)
         virtual_cache_base_dir = base_dir
     end
 end
@@ -372,13 +374,7 @@ function FileChooser:getVirtualList(path, collate)
                 item = self:getListItem(nil, name, this_path, fake_attributes, collate)
                 item.nb_sub_files = v[2]
                 item.mandatory = self:getMenuItemMandatory(item)
-                local representative_path = self.ui and self.ui.coverbrowser and self.ui.coverbrowser:getRepresentativeFilepath(this_path)
-                if representative_path then
-                    item.is_virtual_metadata_leaf = true
-                    item.virtual_leaf_count = v[2]
-                    item.virtual_leaf_title = name
-                    item.representative_filepath = representative_path
-                end
+                VirtualLeaf.markMetadataLeaf(item, v[2], name)
                 table.insert(dirs, item)
             end
         end
@@ -584,6 +580,10 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
         end
         representative_file_cache[path] = filepath
         return filepath or nil
+    end
+
+    local function ensureRepresentativeFilepath(item)
+        return VirtualLeaf.ensureRepresentativeFilepath(item, CoverBrowser)
     end
 
     local badge_cache = {}
@@ -814,6 +814,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             return update_func(item, ...)
         end
 
+        ensureRepresentativeFilepath(item)
         local filepath = item.entry.representative_filepath or item.filepath or item.entry.file or item.entry.path
         local original_mandatory = item.mandatory
         local original_getSetting = BookInfoManager.getSetting
@@ -849,6 +850,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local function withRepresentativeFileEntry(item, update_func, suppress_text, ...)
+        ensureRepresentativeFilepath(item)
         if not item.entry or not item.entry.is_virtual_metadata_leaf or not item.entry.representative_filepath then
             return update_func(item, ...)
         end

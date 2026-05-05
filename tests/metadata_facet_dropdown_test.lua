@@ -7,6 +7,15 @@ local test, run = TestHelper.newSuite()
 
 local real_virtual_path = require("modules.virtual_path")
 local metadata_source_stub = {}
+metadata_source_stub.getFacetValuesWithCount = function(book_info_manager, base_dir, meta_name, filter_state)
+    local values = metadata_source_stub.getMatchingMetadataValues
+        and metadata_source_stub.getMatchingMetadataValues(book_info_manager, base_dir, meta_name, filter_state)
+        or {}
+    local files = metadata_source_stub.getMatchingFiles
+        and metadata_source_stub.getMatchingFiles(book_info_manager, base_dir, filter_state)
+        or {}
+    return values, #files
+end
 local ui_manager_stub = {
     shown = {},
     closed = {},
@@ -140,6 +149,40 @@ test("show omits dimensions whose values are already selected", function()
     assertEqual(buttons[2][2].text, "1")
 end)
 
+test("show counts available dimensions without sorting values", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice"),
+        },
+    }
+    metadata_source_stub.getMatchingMetadataValues = function()
+        return {
+            { "Zed", 1 },
+            { "Alpha", 1 },
+            { "Selected", 1, selected = true },
+        }
+    end
+
+    local original_sort = table.sort
+    table.sort = function()
+        error("unexpected sort")
+    end
+    local ok, err = pcall(function()
+        MetadataFacetDropdown.show(file_manager, {})
+    end)
+    table.sort = original_sort
+    if not ok then
+        error(err)
+    end
+
+    local buttons = ui_manager_stub.shown[1].buttons
+    assertEqual(#buttons, 3)
+    assertEqual(buttons[1][2].text, "2")
+    assertEqual(buttons[2][2].text, "2")
+    assertEqual(buttons[3][2].text, "2")
+end)
+
 test("show displays no filters row when every available value is selected", function()
     resetUi()
     local file_manager = {
@@ -203,6 +246,36 @@ test("showValues sorts values, hides selected values, and disables non-narrowing
     assertEqual(buttons[4][1].enabled, true)
     assertEqual(buttons[5][1].text, "Same")
     assertEqual(buttons[5][1].enabled, false)
+end)
+
+test("showValues uses facet result count without fetching matching files again", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice"),
+            changeToPath = function() end,
+        },
+    }
+    metadata_source_stub.getFacetValuesWithCount = function()
+        return {
+            { "Narrow", 1 },
+            { "Same", 4 },
+        }, 4
+    end
+    metadata_source_stub.getMatchingFiles = function()
+        error("unexpected matching files fetch")
+    end
+
+    MetadataFacetDropdown.showValues(file_manager, {}, {
+        key = "authors",
+        label = "Authors",
+    })
+
+    local buttons = ui_manager_stub.shown[1].buttons
+    assertEqual(buttons[2][1].text, "Narrow")
+    assertEqual(buttons[2][1].enabled, true)
+    assertEqual(buttons[3][1].text, "Same")
+    assertEqual(buttons[3][1].enabled, false)
 end)
 
 run()
