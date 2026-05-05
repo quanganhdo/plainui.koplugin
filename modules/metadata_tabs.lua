@@ -115,8 +115,9 @@ local BOOKS_SORT_COLLATE = {
 }
 local TAB_SELECTED_SUFFIX = " \u{25be}"
 local TAB_UNSELECTED_SUFFIX = "  "
-local OPTION_CHECKMARK = "\u{2713}"
-local OPTION_CHECKMARK_WIDTH = 48
+local OPTION_RADIO_SELECTED = "\u{25c9}"
+local OPTION_RADIO_UNSELECTED = "\u{25ef}"
+local OPTION_RADIO_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
 local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
 local TAB_OPTIONS_LABEL_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(56)
 
@@ -727,32 +728,32 @@ function MetadataTabsTitleBar:showTabOptionValues(tab_key, field, anchor)
             self:refreshForTabOptionChange()
             self:showTabOptionValues(tab_key, field, anchor)
         end
-        local row = {{
-            text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, tab_key),
-            align = "left",
-            font_bold = false,
-            no_vertical_sep = true,
-            callback = selectValue,
-        }}
+        local row = {
+            {
+                text = selected and OPTION_RADIO_SELECTED or OPTION_RADIO_UNSELECTED,
+                align = "center",
+                font_bold = false,
+                no_vertical_sep = true,
+                width = OPTION_RADIO_WIDTH,
+                callback = selectValue,
+            },
+            {
+                text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, tab_key),
+                align = "left",
+                font_bold = false,
+                no_vertical_sep = true,
+                callback = selectValue,
+            },
+        }
         local count = filter_counts and filter_counts[value_ref]
         if count ~= nil then
             table.insert(row, {
-                text = selected and tostring(count) .. " " .. OPTION_CHECKMARK or tostring(count),
+                text = tostring(count),
                 align = "left",
                 font_bold = false,
                 width = OPTION_COUNT_WIDTH,
                 callback = selectValue,
             })
-        else
-            if selected then
-                table.insert(row, {
-                    text = OPTION_CHECKMARK,
-                    align = "center",
-                    font_bold = false,
-                    width = OPTION_CHECKMARK_WIDTH,
-                    callback = selectValue,
-                })
-            end
         end
         table.insert(buttons, row)
     end
