@@ -9,14 +9,25 @@ local test, run = TestHelper.newSuite()
 local saved_settings = G_reader_settings
 
 local function withSettings(settings, fn)
+    local saved
     G_reader_settings = {
         readSetting = function(_self, key)
             if key == TabViewOptions.SETTINGS_KEY then
                 return settings
             end
         end,
+        saveSetting = function(_self, key, value)
+            if key == TabViewOptions.SETTINGS_KEY then
+                saved = value
+                settings = value
+            end
+        end,
     }
-    local ok, err = pcall(fn)
+    local ok, err = pcall(function()
+        fn(function()
+            return saved
+        end)
+    end)
     G_reader_settings = saved_settings
     if not ok then
         error(err)
@@ -84,6 +95,27 @@ test("keywords normalizes to tags", function()
 
         assertEqual(tags.filter, "reading")
         assertEqual(tags.folder_sort, "book_count")
+    end)
+end)
+
+test("set persists valid options", function()
+    withSettings(nil, function(getSaved)
+        local ok = TabViewOptions.set("tags", "folder_sort", "book_count")
+        local saved = getSaved()
+
+        assertEqual(ok, true)
+        assertEqual(saved.tags.folder_sort, "book_count")
+        assertEqual(saved.tags.filter, "all")
+        assertEqual(saved.books.filter, "legacy")
+    end)
+end)
+
+test("set rejects metadata legacy values", function()
+    withSettings(nil, function(getSaved)
+        local ok = TabViewOptions.set("authors", "filter", "legacy")
+
+        assertEqual(ok, false)
+        assertEqual(getSaved(), nil)
     end)
 end)
 

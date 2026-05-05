@@ -81,6 +81,14 @@ local function readSettings()
     return {}
 end
 
+local function writeSettings(options)
+    if G_reader_settings and G_reader_settings.saveSetting then
+        G_reader_settings:saveSetting(SETTINGS_KEY, options)
+        return true
+    end
+    return false
+end
+
 local function normalizeTabKey(tab_key)
     if tab_key == "keywords" then
         return "tags"
@@ -128,6 +136,38 @@ function TabViewOptions.getAll()
         series = normalizeMetadataOptions("series", settings.series),
         tags = normalizeMetadataOptions("tags", settings.tags),
     }
+end
+
+function TabViewOptions.set(tab_key, field, value)
+    tab_key = normalizeTabKey(tab_key)
+    local settings = readSettings()
+    local current = TabViewOptions.getAll()
+
+    if tab_key == "books" then
+        if field == "filter" and VALID.books.filter[value] then
+            current.books.filter = value
+        elseif field == "sort" and VALID.books.sort[value] then
+            current.books.sort = value
+        else
+            return false
+        end
+    elseif METADATA_TABS[tab_key] then
+        if field == "filter" and VALID.metadata.filter[value] then
+            current[tab_key].filter = value
+        elseif field == "folder_sort" and VALID.metadata.folder_sort[value] then
+            current[tab_key].folder_sort = value
+        else
+            return false
+        end
+    else
+        return false
+    end
+
+    settings.books = current.books
+    settings.authors = current.authors
+    settings.series = current.series
+    settings.tags = current.tags
+    return writeSettings(settings)
 end
 
 function TabViewOptions.isMetadataTab(tab_key)

@@ -283,6 +283,33 @@ test("getMatchingFiles caches status filters independently", function()
     assertEqual(manager.prepare_count, 2)
 end)
 
+test("getStatusFilterCounts buckets statuses from one unfiltered query", function()
+    local manager = makeManager({
+        book("/books/new.epub", "new.epub", "New", "Alice", "Foo", "1", "tag"),
+        book("/books/reading.epub", "reading.epub", "Reading", "Alice", "Foo", "2", "tag"),
+        book("/books/finished.epub", "finished.epub", "Finished", "Alice", "Foo", "3", "tag"),
+        book("/books/abandoned.epub", "abandoned.epub", "Abandoned", "Alice", "Foo", "4", "tag"),
+    })
+    setBookStatus("/books/new.epub", "new")
+    setBookStatus("/books/reading.epub", "reading")
+    setBookStatus("/books/finished.epub", "complete")
+    setBookStatus("/books/abandoned.epub", "abandoned")
+
+    local counts = MetadataSource.getStatusFilterCounts(manager, "/books", FilterState.new("/books"), {
+        filter = "reading",
+    })
+    local counts_again = MetadataSource.getStatusFilterCounts(manager, "/books", FilterState.new("/books"), {
+        filter = "finished",
+    })
+
+    assertEqual(counts.all, 4)
+    assertEqual(counts.unread, 1)
+    assertEqual(counts.reading, 1)
+    assertEqual(counts.finished, 1)
+    assertEqual(counts_again.all, 4)
+    assertEqual(manager.prepare_count, 1)
+end)
+
 test("getFacetValues groups multi-value facets and marks selected values", function()
     local state = FilterState.new("/books")
     FilterState.addFilter(state, "authors", "Alice")

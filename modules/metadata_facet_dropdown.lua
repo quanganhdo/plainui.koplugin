@@ -5,6 +5,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local ffiUtil = require("ffi/util")
 local FileManager = require("apps/filemanager/filemanager")
 local MetadataSource = require("modules.metadata_source")
+local Size = require("ui/size")
 local TabViewOptions = require("modules.tab_view_options")
 local UIManager = require("ui/uimanager")
 local VirtualPath = require("modules.virtual_path")
@@ -13,6 +14,7 @@ local _ = require("gettext")
 local MetadataFacetDropdown = {}
 local ROW_FONT_FACE = "cfont"
 local ROW_FONT_SIZE = 20
+local ROW_COUNT_WIDTH = 2 * Size.padding.large + Size.padding.default * 6
 
 local DIMENSIONS = {
     {
@@ -137,12 +139,12 @@ local function makeNavigationRow(text, count, callback, enabled)
         },
         {
             text = tostring(count or 0),
-            align = "center",
+            align = "left",
             font_face = ROW_FONT_FACE,
             font_size = ROW_FONT_SIZE,
             font_bold = false,
             enabled = enabled,
-            width = 64,
+            width = ROW_COUNT_WIDTH,
             callback = callback or function() end,
         },
     }

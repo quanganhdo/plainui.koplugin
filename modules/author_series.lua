@@ -140,10 +140,6 @@ local function getVirtualCacheKey(path, tab_options, include_folder_sort)
 end
 
 local function showVirtualFile(file_chooser, filename, fullpath, tab_options)
-    if not tab_options or tab_options.filter == "all" then
-        return file_chooser:show_file(filename, fullpath)
-    end
-
     for _, pattern in ipairs(file_chooser.exclude_files) do
         if filename:match(pattern) then
             return false

@@ -3,6 +3,7 @@
 
 local userpatch = require("userpatch")
 local Button = require("ui/widget/button")
+local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Event = require("ui/event")
 local FileManager = require("apps/filemanager/filemanager")
@@ -32,6 +33,16 @@ local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
 local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
 local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
+
+local FILTER_VALUES = {
+    books = { "legacy", "all", "unread", "reading", "finished" },
+    metadata = { "all", "unread", "reading", "finished" },
+}
+
+local SORT_VALUES = {
+    books = { "legacy", "recent", "title" },
+    metadata = { "name", "book_count" },
+}
 
 local function getMetadataLeafInfo(path)
     local base_dir, active_dimension, filter_state = VirtualPath.parse(path)
@@ -102,6 +113,79 @@ local BOOKS_SORT_COLLATE = {
     recent = "access",
     title = "title",
 }
+local TAB_SELECTED_SUFFIX = " \u{25be}"
+local TAB_UNSELECTED_SUFFIX = "  "
+local OPTION_CHECKMARK = "\u{2713}"
+local OPTION_CHECKMARK_WIDTH = 48
+local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
+local TAB_OPTIONS_LABEL_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(56)
+
+local function getFilterLabel(value)
+    local labels = {
+        legacy = _("KOReader Setting"),
+        all = _("All"),
+        unread = _("Unread"),
+        reading = _("Reading"),
+        finished = _("Finished"),
+    }
+    return labels[value] or labels.all
+end
+
+local function getSortLabel(value, tab_key)
+    local name_labels = {
+        authors = _("Author Name"),
+        series = _("Series Title"),
+        tags = _("Tag Name"),
+    }
+    local labels = {
+        legacy = _("KOReader Setting"),
+        recent = _("Recent"),
+        title = _("Title"),
+        name = name_labels[tab_key] or _("Name"),
+        book_count = _("Number of Books"),
+    }
+    return labels[value] or labels.name
+end
+
+local function getTabFieldValues(tab_key, field)
+    if field == "filter" then
+        return FILTER_VALUES[tab_key == "books" and "books" or "metadata"]
+    end
+    return SORT_VALUES[tab_key == "books" and "books" or "metadata"]
+end
+
+local function getTabOptionField(tab_key, field)
+    if field == "filter" then
+        return "filter"
+    end
+    return tab_key == "books" and "sort" or "folder_sort"
+end
+
+local function getMetadataFilterCounts(file_manager, tab_key)
+    if not TabViewOptions.isMetadataTab(tab_key) then
+        return
+    end
+
+    local file_chooser = file_manager and file_manager.file_chooser
+    local path = file_chooser and file_chooser.path
+    if VirtualPath.getTabKey(path) ~= tab_key then
+        return
+    end
+
+    local base_dir, _active_dimension, filter_state = VirtualPath.parse(path)
+    if not base_dir then
+        return
+    end
+
+    local MetadataSource = require("modules.metadata_source")
+    local BookInfoManager = require("bookinfomanager")
+    return MetadataSource.getStatusFilterCounts(
+        BookInfoManager,
+        base_dir,
+        filter_state,
+        TabViewOptions.getMetadataOptions(tab_key)
+    )
+end
 
 local function isVirtualPath(path)
     return VirtualPath.findRoot(path) ~= nil
@@ -193,7 +277,7 @@ function MetadataTabsTitleBar:init()
     self.width = Screen:getWidth()
     self.icon_size = Screen:scaleBySize(DGENERIC_ICON_SIZE)
     self.button_padding = Screen:scaleBySize(5)
-    self.tab_padding_h = Screen:scaleBySize(10)
+    self.tab_padding_h = Screen:scaleBySize(7)
     self.tab_padding_v = Screen:scaleBySize(5)
     self.tab_font_face = "smallinfofont"
     self.tab_font_size = 18
@@ -203,21 +287,25 @@ function MetadataTabsTitleBar:init()
 
     self.file_manager = self.file_manager or FileManager.instance
     local file_manager = self.file_manager
-    local function getTabWidth(text)
+    local function getTextWidth(text, bold)
         local face = Font:getFace(self.tab_font_face, self.tab_font_size)
-        local normal_widget = TextWidget:new{
+        local widget = TextWidget:new{
             text = text,
             face = face,
-            bold = false,
+            bold = bold or false,
         }
-        local bold_widget = TextWidget:new{
-            text = text,
-            face = face,
-            bold = true,
-        }
-        local width = math.max(normal_widget:getSize().w, bold_widget:getSize().w) + 2 * self.tab_padding_h
-        normal_widget:free()
-        bold_widget:free()
+        local width = widget:getSize().w
+        widget:free()
+        return width
+    end
+    local function getTabWidth(text)
+        local selected_text = text .. TAB_SELECTED_SUFFIX
+        local unselected_text = text .. TAB_UNSELECTED_SUFFIX
+        local width = math.max(
+            getTextWidth(unselected_text, false),
+            getTextWidth(unselected_text, true),
+            getTextWidth(selected_text, true)
+        ) + 2 * self.tab_padding_h
         return width
     end
     local function makeTab(key, text, callback, hold_callback)
@@ -231,7 +319,13 @@ function MetadataTabsTitleBar:init()
             bordersize = 0,
             padding_h = self.tab_padding_h,
             padding_v = self.tab_padding_v,
-            callback = callback,
+            callback = function()
+                if self.selected_tab_key == key then
+                    self:showTabOptions(key)
+                else
+                    callback()
+                end
+            end,
             hold_callback = hold_callback,
             show_parent = self.show_parent,
         }
@@ -240,6 +334,7 @@ function MetadataTabsTitleBar:init()
             button,
         }
         tab.key = key
+        tab.text = text
         tab.button = button
         return tab
     end
@@ -262,6 +357,12 @@ function MetadataTabsTitleBar:init()
     self.series_button = self.series_tab.button
     self.authors_button = self.authors_tab.button
     self.tags_button = self.tags_tab.button
+    self.tabs_by_key = {
+        books = self.books_tab,
+        series = self.series_tab,
+        authors = self.authors_tab,
+        tags = self.tags_tab,
+    }
     self.tab_label_height = self.books_button.label_container.dimen.h
     self.back_chevron_hit_width = self.tab_label_height + self.tab_padding_h
     self.tabs_group = HorizontalGroup:new{
@@ -529,6 +630,141 @@ function MetadataTabsTitleBar:getDropdownAnchor()
     return button and button[1] and button[1].dimen or button and button.dimen, true
 end
 
+function MetadataTabsTitleBar:getTabDropdownAnchor(tab_key)
+    local tab = self.tabs_by_key and self.tabs_by_key[tab_key]
+    local button = tab and tab.button
+    return button and button[1] and button[1].dimen or button and button.dimen, true
+end
+
+function MetadataTabsTitleBar:refreshForTabOptionChange()
+    local file_manager = self.file_manager or FileManager.instance
+    local file_chooser = file_manager and file_manager.file_chooser
+    if file_chooser then
+        file_chooser:refreshPath()
+    else
+        UIManager:setDirty(self.show_parent, "ui", self.dimen)
+    end
+end
+
+function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
+    anchor = anchor or function()
+        return self:getTabDropdownAnchor(tab_key)
+    end
+    local options = TabViewOptions.get(tab_key)
+    local sort_value = tab_key == "books" and options.sort or options.folder_sort
+    local dialog
+    local function showValues(field)
+        if dialog then
+            UIManager:close(dialog)
+        end
+        self:showTabOptionValues(tab_key, field, anchor)
+    end
+    local function makeSummaryRow(label, value, field)
+        return {
+            {
+                text = label,
+                align = "left",
+                font_bold = false,
+                no_vertical_sep = true,
+                width = TAB_OPTIONS_LABEL_WIDTH,
+                callback = function()
+                    showValues(field)
+                end,
+            },
+            {
+                text = value,
+                align = "left",
+                font_bold = true,
+                callback = function()
+                    showValues(field)
+                end,
+            },
+        }
+    end
+    local buttons = {
+        makeSummaryRow(_("Filter"), getFilterLabel(options.filter), "filter"),
+        makeSummaryRow(_("Sort"), getSortLabel(sort_value, tab_key), "sort"),
+    }
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        buttons = buttons,
+        anchor = anchor,
+    }
+    UIManager:show(dialog)
+end
+
+function MetadataTabsTitleBar:showTabOptionValues(tab_key, field, anchor)
+    local option_field = getTabOptionField(tab_key, field)
+    local options = TabViewOptions.get(tab_key)
+    local current_value = options[option_field]
+    local filter_counts
+    if field == "filter" then
+        filter_counts = getMetadataFilterCounts(self.file_manager or FileManager.instance, tab_key)
+    end
+    local dialog
+    local buttons = {
+        {{
+            text = _("Back"),
+            align = "left",
+            font_bold = true,
+            callback = function()
+                if dialog then
+                    UIManager:close(dialog)
+                end
+                self:showTabOptions(tab_key, anchor)
+            end,
+        }},
+    }
+
+    for _, value in ipairs(getTabFieldValues(tab_key, field)) do
+        local value_ref = value
+        local selected = value_ref == current_value
+        local function selectValue()
+            if dialog then
+                UIManager:close(dialog)
+            end
+            TabViewOptions.set(tab_key, option_field, value_ref)
+            self:refreshForTabOptionChange()
+            self:showTabOptionValues(tab_key, field, anchor)
+        end
+        local row = {{
+            text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, tab_key),
+            align = "left",
+            font_bold = false,
+            no_vertical_sep = true,
+            callback = selectValue,
+        }}
+        local count = filter_counts and filter_counts[value_ref]
+        if count ~= nil then
+            table.insert(row, {
+                text = selected and tostring(count) .. " " .. OPTION_CHECKMARK or tostring(count),
+                align = "left",
+                font_bold = false,
+                width = OPTION_COUNT_WIDTH,
+                callback = selectValue,
+            })
+        else
+            if selected then
+                table.insert(row, {
+                    text = OPTION_CHECKMARK,
+                    align = "center",
+                    font_bold = false,
+                    width = OPTION_CHECKMARK_WIDTH,
+                    callback = selectValue,
+                })
+            end
+        end
+        table.insert(buttons, row)
+    end
+
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        buttons = buttons,
+        anchor = anchor,
+    }
+    UIManager:show(dialog)
+end
+
 function MetadataTabsTitleBar:updateStatusIndicators(refresh)
     if not self.battery_button then
         return
@@ -560,11 +796,15 @@ function MetadataTabsTitleBar:refreshStatusIndicators()
 end
 
 function MetadataTabsTitleBar:setTabSelected(tab, selected)
+    local text = tab.text .. (selected and TAB_SELECTED_SUFFIX or TAB_UNSELECTED_SUFFIX)
     if tab.button.text_font_bold ~= selected then
         tab.button.text_font_bold = selected
+        tab.button.text = text
         tab.button.label_widget:free()
         tab.button:init()
+        return
     end
+    tab.button:setText(text, tab.button.width)
 end
 
 function MetadataTabsTitleBar:updateSelectedTab(refresh)

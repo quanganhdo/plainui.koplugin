@@ -12,6 +12,7 @@ local T = ffiUtil.template
 local MetadataSource = {}
 local matching_files_cache = {}
 local facet_values_cache = {}
+local status_counts_cache = {}
 local file_validity_cache = {}
 
 local BOOK_EXTENSIONS = {
@@ -157,7 +158,25 @@ end
 function MetadataSource.clearCache(base_dir)
     clearCacheTable(matching_files_cache, base_dir)
     clearCacheTable(facet_values_cache, base_dir)
+    clearCacheTable(status_counts_cache, base_dir)
     clearPathCacheTable(file_validity_cache, base_dir)
+end
+
+local function copyOptionsWithFilter(options, filter)
+    local copy = {}
+    for key, value in pairs(options or {}) do
+        copy[key] = value
+    end
+    copy.filter = filter
+    return copy
+end
+
+local function copyMap(map)
+    local copy = {}
+    for key, value in pairs(map or {}) do
+        copy[key] = value
+    end
+    return copy
 end
 
 local function addFilterSql(sql, vars, dimension, value)
@@ -311,6 +330,45 @@ end
 
 function MetadataSource.getMatchingFilesCount(book_info_manager, base_dir, filter_state, options)
     return #getMatchingFilesCached(book_info_manager, base_dir, filter_state, nil, options)
+end
+
+function MetadataSource.getStatusFilterCounts(book_info_manager, base_dir, filter_state, options)
+    if not base_dir then
+        return {}
+    end
+
+    local state = filter_state or FilterState.new(base_dir)
+    local all_options = copyOptionsWithFilter(options, "all")
+    local cache_key = table.concat({
+        getStateCacheKey(base_dir, state, all_options),
+        "status_counts",
+    }, "\31")
+
+    if not status_counts_cache[cache_key] then
+        local counts = {
+            all = 0,
+            unread = 0,
+            reading = 0,
+            finished = 0,
+        }
+        local filter_by_status = {
+            new = "unread",
+            reading = "reading",
+            complete = "finished",
+        }
+        local BookList = require("ui/widget/booklist")
+        local matching_files = getMatchingFilesCached(book_info_manager, base_dir, state, nil, all_options)
+        counts.all = #matching_files
+        for _, row in ipairs(matching_files) do
+            local filter = filter_by_status[BookList.getBookStatus(row[1])]
+            if filter then
+                counts[filter] = counts[filter] + 1
+            end
+        end
+        status_counts_cache[cache_key] = counts
+    end
+
+    return copyMap(status_counts_cache[cache_key])
 end
 
 function MetadataSource.fetchMatchingFiles(book_info_manager, base_dir, filter_state, limit, options)
