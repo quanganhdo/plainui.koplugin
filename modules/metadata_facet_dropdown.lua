@@ -91,7 +91,32 @@ local function getAvailableMetadataValues(state, dimension)
     return values, available_count
 end
 
-local function makeNavigationRow(text, count, callback)
+local function getCurrentResultCount(state)
+    local BookInfoManager = require("bookinfomanager")
+    return #MetadataSource.getMatchingFiles(
+        BookInfoManager,
+        state.base_dir,
+        state.filter_state
+    )
+end
+
+local function splitValuesByNarrowing(values, current_result_count)
+    local useful_values = {}
+    local non_narrowing_values = {}
+    for _, value in ipairs(values) do
+        if not value.selected then
+            if (value[2] or 0) >= current_result_count then
+                table.insert(non_narrowing_values, value)
+            else
+                table.insert(useful_values, value)
+            end
+        end
+    end
+    return useful_values, non_narrowing_values
+end
+
+local function makeNavigationRow(text, count, callback, enabled)
+    enabled = enabled ~= false
     return {
         {
             text = text,
@@ -99,8 +124,9 @@ local function makeNavigationRow(text, count, callback)
             font_face = ROW_FONT_FACE,
             font_size = ROW_FONT_SIZE,
             font_bold = false,
+            enabled = enabled,
             no_vertical_sep = true,
-            callback = callback,
+            callback = callback or function() end,
         },
         {
             text = tostring(count or 0),
@@ -108,8 +134,9 @@ local function makeNavigationRow(text, count, callback)
             font_face = ROW_FONT_FACE,
             font_size = ROW_FONT_SIZE,
             font_bold = false,
+            enabled = enabled,
             width = 64,
-            callback = callback,
+            callback = callback or function() end,
         },
     }
 end
@@ -162,6 +189,7 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
     end
 
     local values = getAvailableMetadataValues(state, dimension)
+    local current_result_count = getCurrentResultCount(state)
 
     local dialog
     local buttons = {
@@ -179,21 +207,28 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
             end,
         }},
     }
-    for _, value in ipairs(values) do
-        if not value.selected then
-            local value_key = value[1]
-            table.insert(buttons, makeNavigationRow(VirtualPath.displayValue(value_key), value[2], function()
-                if dialog then
-                    UIManager:close(dialog)
-                end
-                state.file_chooser:changeToPath(VirtualPath.buildFilteredPath(
-                    state.base_dir,
-                    state.filter_state,
-                    dimension.key,
-                    value_key
-                ))
-            end))
-        end
+    local useful_values, non_narrowing_values = splitValuesByNarrowing(values, current_result_count)
+
+    local function addValueRow(value, enabled)
+        local value_key = value[1]
+        table.insert(buttons, makeNavigationRow(VirtualPath.displayValue(value_key), value[2], function()
+            if dialog then
+                UIManager:close(dialog)
+            end
+            state.file_chooser:changeToPath(VirtualPath.buildFilteredPath(
+                state.base_dir,
+                state.filter_state,
+                dimension.key,
+                value_key
+            ))
+        end, enabled))
+    end
+
+    for _, value in ipairs(useful_values) do
+        addValueRow(value, true)
+    end
+    for _, value in ipairs(non_narrowing_values) do
+        addValueRow(value, false)
     end
     if #buttons == 1 then
         table.insert(buttons, {{
@@ -212,5 +247,9 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
     }
     UIManager:show(dialog)
 end
+
+MetadataFacetDropdown._test = {
+    splitValuesByNarrowing = splitValuesByNarrowing,
+}
 
 return MetadataFacetDropdown
