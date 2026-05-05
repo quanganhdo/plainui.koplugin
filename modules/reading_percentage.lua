@@ -13,7 +13,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     local Screen = Device.screen
 
     local percentage_badge_cache = {}
-    local percentage_face = Font:getFace("infont", 13)
+    local percentage_face = Font:getFace(CoverBadge.FONT_FACE, CoverBadge.getFontSize())
 
     local function getReadingPercentageText(percent_finished)
         local percent = math.floor((percent_finished or 0) * 100 + 0.5)

@@ -8,8 +8,21 @@ local TextWidget = require("ui/widget/textwidget")
 local CoverBadge = {}
 
 CoverBadge.LIGHTEN_FACTOR = 0.60
+CoverBadge.FONT_FACE = "infont"
+CoverBadge.DEFAULT_FONT_SIZE = 13
+CoverBadge.FONT_SIZE_SETTING_KEY = "plainui_badge_font_size"
 
 local LIGHTEN_COLOR = Blitbuffer.Color8A(0xFF, math.floor(0xFF * CoverBadge.LIGHTEN_FACTOR + 0.5))
+
+function CoverBadge.getFontSize()
+    if G_reader_settings and G_reader_settings.readSetting then
+        local font_size = tonumber(G_reader_settings:readSetting(CoverBadge.FONT_SIZE_SETTING_KEY))
+        if font_size and font_size > 0 then
+            return font_size
+        end
+    end
+    return CoverBadge.DEFAULT_FONT_SIZE
+end
 
 local function lightenRoundedRect(bb, x, y, w, h, radius)
     radius = math.floor(math.min(radius or 0, w / 2, h / 2))

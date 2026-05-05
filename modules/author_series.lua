@@ -614,7 +614,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local badge_cache = {}
-    local badge_face = Font:getFace("infont", 13)
+    local badge_face = Font:getFace(CoverBadge.FONT_FACE, CoverBadge.getFontSize())
     local badge_min_text = TextWidget:new{
         text = "99",
         face = badge_face,
@@ -675,7 +675,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     local series_index_badge_cache = {}
-    local series_index_face = Font:getFace("infont", 13)
+    local series_index_face = Font:getFace(CoverBadge.FONT_FACE, CoverBadge.getFontSize())
     local series_index_badge_height
 
     local function getSeriesIndexBadgeHeight()
