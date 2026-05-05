@@ -18,6 +18,7 @@ local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local StatusIndicators = require("modules.status_indicators")
+local TabViewOptions = require("modules.tab_view_options")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -89,6 +90,60 @@ local function getSelectedTabKey(file_manager)
     end
 
     return "books"
+end
+
+local BOOKS_FILTER_STATUS = {
+    unread = "new",
+    reading = "reading",
+    finished = "complete",
+}
+
+local BOOKS_SORT_COLLATE = {
+    recent = "access",
+    title = "title",
+}
+
+local function isVirtualPath(path)
+    return VirtualPath.findRoot(path) ~= nil
+end
+
+local function isFileManagerBooksChooser(file_chooser)
+    if not file_chooser
+            or file_chooser.name ~= "filemanager"
+            or isVirtualPath(file_chooser.path) then
+        return false
+    end
+
+    local file_manager = FileManager.instance
+    return not file_manager
+        or file_chooser.ui == file_manager
+        or file_manager.file_chooser == file_chooser
+end
+
+local function showFileWithBooksOptions(file_chooser, filename, fullpath)
+    for _, pattern in ipairs(file_chooser.exclude_files) do
+        if filename:match(pattern) then
+            return false
+        end
+    end
+    if not file_chooser.show_unsupported
+            and file_chooser.file_filter ~= nil
+            and not file_chooser.file_filter(filename) then
+        return false
+    end
+
+    local filter = TabViewOptions.get("books").filter
+    if filter == "all" then
+        return true
+    end
+
+    local status = BOOKS_FILTER_STATUS[filter]
+    if not status or not fullpath then
+        return true
+    end
+
+    local BookList = require("ui/widget/booklist")
+    return BookList.getBookStatus(fullpath) == status
 end
 
 local function getBackTitleBarInfo(file_manager)
@@ -580,6 +635,47 @@ function MetadataTabsTitleBar:onFrontlightStateChanged()
     self:refreshStatusIndicators()
     UIManager:scheduleIn(0.2, self.refreshStatusIndicators, self)
     UIManager:scheduleIn(1, self.refreshStatusIndicators, self)
+end
+
+local FileChooser_show_file = FileChooser.show_file
+FileChooser.show_file = function(self, filename, fullpath)
+    if not isFileManagerBooksChooser(self) then
+        return FileChooser_show_file(self, filename, fullpath)
+    end
+
+    local books_options = TabViewOptions.get("books")
+    if books_options.filter == "legacy" then
+        return FileChooser_show_file(self, filename, fullpath)
+    end
+    return showFileWithBooksOptions(self, filename, fullpath)
+end
+
+local FileChooser_getCollate = FileChooser.getCollate
+FileChooser.getCollate = function(self)
+    if isFileManagerBooksChooser(self) then
+        local books_options = TabViewOptions.get("books")
+        if books_options.sort == "legacy" then
+            return FileChooser_getCollate(self)
+        end
+
+        local collate_id = BOOKS_SORT_COLLATE[books_options.sort]
+        local collate = collate_id and self.collates[collate_id]
+        if collate then
+            return collate, collate_id
+        end
+    end
+    return FileChooser_getCollate(self)
+end
+
+local FileChooser_getSortingFunction = FileChooser.getSortingFunction
+FileChooser.getSortingFunction = function(self, collate, reverse_collate)
+    if isFileManagerBooksChooser(self) then
+        local books_options = TabViewOptions.get("books")
+        if books_options.sort ~= "legacy" then
+            reverse_collate = false
+        end
+    end
+    return FileChooser_getSortingFunction(self, collate, reverse_collate)
 end
 
 function MetadataTabsTitleBar:generateHorizontalLayout()

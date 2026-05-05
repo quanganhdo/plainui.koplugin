@@ -5,6 +5,7 @@ local ButtonDialog = require("ui/widget/buttondialog")
 local ffiUtil = require("ffi/util")
 local FileManager = require("apps/filemanager/filemanager")
 local MetadataSource = require("modules.metadata_source")
+local TabViewOptions = require("modules.tab_view_options")
 local UIManager = require("ui/uimanager")
 local VirtualPath = require("modules.virtual_path")
 local _ = require("gettext")
@@ -70,6 +71,7 @@ local function getDropdownState(file_manager)
         file_chooser = file_chooser,
         base_dir = base_dir,
         filter_state = filter_state,
+        tab_options = TabViewOptions.getMetadataOptions(VirtualPath.getTabKey(path)),
     }
 end
 
@@ -89,7 +91,8 @@ local function getMetadataValuesWithCount(state, dimension)
         BookInfoManager,
         state.base_dir,
         dimension.key,
-        state.filter_state
+        state.filter_state,
+        state.tab_options
     )
 end
 

@@ -23,6 +23,12 @@ local SYMBOL_BY_META = {
     keywords = VirtualPath.KEYWORD_SYMBOL,
 }
 
+local TAB_BY_META = {
+    authors = "authors",
+    series = "series",
+    keywords = "tags",
+}
+
 function VirtualPath.encodeValue(value)
     if value == false or value == nil then
         return VirtualPath.EMPTY_VALUE_SYMBOL
@@ -122,6 +128,22 @@ end
 
 function VirtualPath.getDimensionSymbol(dimension)
     return SYMBOL_BY_META[dimension]
+end
+
+function VirtualPath.getTabKey(path)
+    local fragments = VirtualPath.getFragments(path)
+    if not fragments then
+        return "books"
+    end
+
+    for _, fragment in ipairs(fragments) do
+        local meta_name = META_BY_SYMBOL[fragment]
+        if meta_name then
+            return TAB_BY_META[meta_name]
+        end
+    end
+
+    return "books"
 end
 
 function VirtualPath.buildFilterStatePath(base_dir, filter_state)

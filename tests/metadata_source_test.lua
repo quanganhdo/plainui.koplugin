@@ -4,6 +4,7 @@ local file_check_counts = {
     attributes = {},
     providers = {},
 }
+local book_status_by_path = {}
 
 package.preload["ffi/util"] = function()
     return {
@@ -53,6 +54,14 @@ package.preload["util"] = function()
     }
 end
 
+package.preload["ui/widget/booklist"] = function()
+    return {
+        getBookStatus = function(path)
+            return book_status_by_path[path] or "new"
+        end,
+    }
+end
+
 local FilterState = require("modules.filter_state")
 local MetadataSource = require("modules.metadata_source")
 local TestHelper = require("tests.test_helper")
@@ -70,6 +79,7 @@ end
 local function makeManager(rows)
     MetadataSource.clearCache()
     resetFileCheckCounts()
+    book_status_by_path = {}
     local manager = {}
 
     manager.db_conn = {
@@ -96,6 +106,10 @@ local function makeManager(rows)
     end
 
     return manager
+end
+
+local function setBookStatus(path, status)
+    book_status_by_path[path] = status
 end
 
 local function book(path, filename, title, authors, series, series_index, keywords)
@@ -220,6 +234,55 @@ test("getMatchingFiles accepts book-like multipart extensions", function()
     assertEqual(files[2][1], "/books/b.rtf.zip")
 end)
 
+test("getMatchingFiles applies status filters after SQL and validity checks", function()
+    local manager = makeManager({
+        book("/books/new.epub", "new.epub", "New", "Alice", "Foo", "1", "tag"),
+        book("/books/reading.epub", "reading.epub", "Reading", "Alice", "Foo", "2", "tag"),
+        book("/books/finished.epub", "finished.epub", "Finished", "Alice", "Foo", "3", "tag"),
+    })
+    setBookStatus("/books/new.epub", "new")
+    setBookStatus("/books/reading.epub", "reading")
+    setBookStatus("/books/finished.epub", "complete")
+
+    local reading = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), nil, {
+        filter = "reading",
+    })
+    local finished = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), nil, {
+        filter = "finished",
+    })
+
+    assertEqual(#reading, 1)
+    assertEqual(reading[1][1], "/books/reading.epub")
+    assertEqual(#finished, 1)
+    assertEqual(finished[1][1], "/books/finished.epub")
+end)
+
+test("getMatchingFiles caches status filters independently", function()
+    local manager = makeManager({
+        book("/books/new.epub", "new.epub", "New", "Alice", "Foo", "1", "tag"),
+        book("/books/reading.epub", "reading.epub", "Reading", "Alice", "Foo", "2", "tag"),
+    })
+    setBookStatus("/books/new.epub", "new")
+    setBookStatus("/books/reading.epub", "reading")
+
+    local unread = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), nil, {
+        filter = "unread",
+    })
+    local reading = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), nil, {
+        filter = "reading",
+    })
+    local unread_again = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), nil, {
+        filter = "unread",
+    })
+
+    assertEqual(#unread, 1)
+    assertEqual(unread[1][1], "/books/new.epub")
+    assertEqual(#reading, 1)
+    assertEqual(reading[1][1], "/books/reading.epub")
+    assertEqual(#unread_again, 1)
+    assertEqual(manager.prepare_count, 2)
+end)
+
 test("getFacetValues groups multi-value facets and marks selected values", function()
     local state = FilterState.new("/books")
     FilterState.addFilter(state, "authors", "Alice")
@@ -285,6 +348,27 @@ test("getFacetValuesWithCount reuses matching files across dimensions", function
     assertEqual(findFacet(authors, "Bob")[2], 2)
     assertEqual(findFacet(series, "Foo")[2], 1)
     assertEqual(manager.prepare_count, 1)
+end)
+
+test("getFacetValuesWithCount applies status filter before grouping", function()
+    local manager = makeManager({
+        book("/books/a.epub", "a.epub", "A", "Alice\nBob", "Foo", "1", "tag"),
+        book("/books/b.epub", "b.epub", "B", "Bob", "Bar", "2", "tag"),
+    })
+    setBookStatus("/books/a.epub", "reading")
+    setBookStatus("/books/b.epub", "complete")
+
+    local authors, count = MetadataSource.getFacetValuesWithCount(
+        manager,
+        "/books",
+        "authors",
+        FilterState.new("/books"),
+        { filter = "reading" }
+    )
+
+    assertEqual(count, 1)
+    assertEqual(findFacet(authors, "Alice")[2], 1)
+    assertEqual(findFacet(authors, "Bob")[2], 1)
 end)
 
 test("getMatchingFiles returns a fresh array wrapper for cached files", function()

@@ -29,6 +29,17 @@ test("parse returns filter state in path order with deepest leaf last", function
     assertEqual(VirtualPath.getLeafEntry(state).value, "Foo")
 end)
 
+test("getTabKey returns the first metadata tab across drill-down levels", function()
+    assertEqual(VirtualPath.getTabKey("/books"), "books")
+    assertEqual(VirtualPath.getTabKey(virtualPath(VirtualPath.SERIES_SYMBOL)), "series")
+    assertEqual(VirtualPath.getTabKey(virtualPath(
+        VirtualPath.SERIES_SYMBOL, "Foo",
+        VirtualPath.AUTHOR_SYMBOL, "Alice",
+        VirtualPath.KEYWORD_SYMBOL, "award"
+    )), "series")
+    assertEqual(VirtualPath.getTabKey(virtualPath(VirtualPath.KEYWORD_SYMBOL, "award")), "tags")
+end)
+
 test("parse decodes special characters before storing and displaying values", function()
     local value = "A/B % C [x] * ? #"
     local encoded = VirtualPath.encodeValue(value)

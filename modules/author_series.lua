@@ -17,6 +17,8 @@ local T = ffiUtil.template
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
 local MetadataSource = require("modules.metadata_source")
+local MetadataSort = require("modules.metadata_sort")
+local TabViewOptions = require("modules.tab_view_options")
 local VirtualLeaf = require("modules.virtual_leaf")
 local VirtualPath = require("modules.virtual_path")
 
@@ -115,21 +117,44 @@ local function virtualTextLess(a, b)
     return ffiUtil.strcoll(a, b)
 end
 
-local function sortVirtualMetadataValues(values, meta_name)
-    table.sort(values, function(a, b)
-        local av = a[1]
-        local bv = b[1]
-        if av == false or av == nil then
-            return false
-        elseif bv == false or bv == nil then
-            return true
-        end
+local function getVirtualTabOptions(path)
+    local tab_key = VirtualPath.getTabKey(path)
+    if not TabViewOptions.isMetadataTab(tab_key) then
+        return TabViewOptions.getMetadataOptions("authors")
+    end
+    return TabViewOptions.getMetadataOptions(tab_key)
+end
 
-        if av == bv then
-            return (a[2] or 0) < (b[2] or 0)
+local function getVirtualCacheKey(path, tab_options, include_folder_sort)
+    tab_options = tab_options or {}
+    local key = {
+        path,
+        "filter",
+        tab_options.filter or "all",
+    }
+    if include_folder_sort then
+        table.insert(key, "folder_sort")
+        table.insert(key, tab_options.folder_sort or "name")
+    end
+    return table.concat(key, "\31")
+end
+
+local function showVirtualFile(file_chooser, filename, fullpath, tab_options)
+    if not tab_options or tab_options.filter == "all" then
+        return file_chooser:show_file(filename, fullpath)
+    end
+
+    for _, pattern in ipairs(file_chooser.exclude_files) do
+        if filename:match(pattern) then
+            return false
         end
-        return virtualTextLess(av, bv)
-    end)
+    end
+    if not file_chooser.show_unsupported
+            and file_chooser.file_filter ~= nil
+            and not file_chooser.file_filter(filename) then
+        return false
+    end
+    return true
 end
 
 local function getVirtualLeafEntry(filter_state)
@@ -351,12 +376,14 @@ function FileChooser:getVirtualList(path, collate)
 
     -- We have arguments
     local _parsed_base_dir, meta_name, filter_state = parseVirtualPath(path)
+    local tab_options = getVirtualTabOptions(path)
     if meta_name then
-        local matching_values = virtual_metadata_values_cache[path]
+        local cache_key = getVirtualCacheKey(path, tab_options, true)
+        local matching_values = virtual_metadata_values_cache[cache_key]
         if not matching_values then
-            matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state)
-            sortVirtualMetadataValues(matching_values, meta_name)
-            virtual_metadata_values_cache[path] = matching_values
+            matching_values = self.ui.coverbrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state, tab_options)
+            MetadataSort.sortFacetValues(matching_values, tab_options.folder_sort)
+            virtual_metadata_values_cache[cache_key] = matching_values
         end
         local selected = filter_state and filter_state.selected and filter_state.selected[meta_name]
         for i, v in ipairs(matching_values) do
@@ -379,17 +406,18 @@ function FileChooser:getVirtualList(path, collate)
             end
         end
     else
-        local matching_files = virtual_matching_files_cache[path]
+        local cache_key = getVirtualCacheKey(path, tab_options)
+        local matching_files = virtual_matching_files_cache[cache_key]
         if not matching_files then
-            matching_files = self.ui.coverbrowser:getMatchingFiles(base_dir, filter_state)
+            matching_files = self.ui.coverbrowser:getMatchingFiles(base_dir, filter_state, tab_options)
             sortVirtualMatchingFiles(matching_files, getVirtualLeafSortMode(filter_state))
-            virtual_matching_files_cache[path] = matching_files
+            virtual_matching_files_cache[cache_key] = matching_files
         end
         local leaf_sort_mode = getVirtualLeafSortMode(filter_state)
         for i, v in ipairs(matching_files) do
             local fullpath, f = unpack(v)
             local attributes = lfs.attributes(fullpath)
-            if attributes and attributes.mode == "file" and self:show_file(f, fullpath) then
+            if attributes and attributes.mode == "file" and showVirtualFile(self, f, fullpath, tab_options) then
                 local item = self:getListItem(path, f, fullpath, attributes, collate)
                 if leaf_sort_mode == "series" and v.series_index then
                     item.virtual_series_index = v.series_index
@@ -511,8 +539,8 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local N_ = _.ngettext
 
     -- Add BookInfoManager:getMatchingMetadataValues()
-    function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state)
-        return MetadataSource.getMatchingMetadataValues(self, base_dir, meta_name, filter_state)
+    function BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state, options)
+        return MetadataSource.getMatchingMetadataValues(self, base_dir, meta_name, filter_state, options)
     end
 
     -- Add BookInfoManager:getFacetValues()
@@ -526,13 +554,13 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     -- Add BookInfoManager:getMatchingFiles()
-    function BookInfoManager:getMatchingFiles(base_dir, filter_state, limit)
-        return MetadataSource.getMatchingFiles(self, base_dir, filter_state, limit)
+    function BookInfoManager:getMatchingFiles(base_dir, filter_state, limit, options)
+        return MetadataSource.getMatchingFiles(self, base_dir, filter_state, limit, options)
     end
 
     -- Add CoverBrowser:getMatchingMetadataValues()
-    function CoverBrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state)
-        return BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state)
+    function CoverBrowser:getMatchingMetadataValues(base_dir, meta_name, filter_state, options)
+        return BookInfoManager:getMatchingMetadataValues(base_dir, meta_name, filter_state, options)
     end
 
     -- Add CoverBrowser:getFacetValues()
@@ -546,28 +574,31 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     end
 
     -- Add CoverBrowser:getMatchingFiles()
-    function CoverBrowser:getMatchingFiles(base_dir, filter_state)
-        return BookInfoManager:getMatchingFiles(base_dir, filter_state)
+    function CoverBrowser:getMatchingFiles(base_dir, filter_state, options)
+        return BookInfoManager:getMatchingFiles(base_dir, filter_state, nil, options)
     end
 
     function CoverBrowser:getRepresentativeFilepath(path)
-        if representative_file_cache[path] ~= nil then
-            return representative_file_cache[path] or nil
+        local tab_options = getVirtualTabOptions(path)
+        local cache_key = getVirtualCacheKey(path, tab_options)
+        if representative_file_cache[cache_key] ~= nil then
+            return representative_file_cache[cache_key] or nil
         end
 
         local base_dir, meta_name, filter_state = parseVirtualPath(path)
         local leaf_sort_mode = getVirtualLeafSortMode(filter_state)
         if not base_dir or meta_name ~= nil or not leaf_sort_mode then
-            representative_file_cache[path] = false
+            representative_file_cache[cache_key] = false
             return nil
         end
 
         ensureVirtualCacheBaseDir(base_dir)
-        local matching_files = virtual_matching_files_cache[path]
+        local matching_files_cache_key = getVirtualCacheKey(path, tab_options)
+        local matching_files = virtual_matching_files_cache[matching_files_cache_key]
         if not matching_files then
-            matching_files = BookInfoManager:getMatchingFiles(base_dir, filter_state)
+            matching_files = BookInfoManager:getMatchingFiles(base_dir, filter_state, nil, tab_options)
             sortVirtualMatchingFiles(matching_files, leaf_sort_mode)
-            virtual_matching_files_cache[path] = matching_files
+            virtual_matching_files_cache[matching_files_cache_key] = matching_files
         end
         local filepath = false
         if #matching_files > 0 then
@@ -578,7 +609,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             end
             filepath = matching_files[representative_idx] and matching_files[representative_idx][1] or false
         end
-        representative_file_cache[path] = filepath
+        representative_file_cache[cache_key] = filepath
         return filepath or nil
     end
 

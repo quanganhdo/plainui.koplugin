@@ -69,6 +69,7 @@ package.loaded["ui/uimanager"] = saved_loaded.uimanager
 package.loaded["modules.virtual_path"] = saved_loaded.virtual_path
 package.loaded.gettext = saved_loaded.gettext
 package.loaded.bookinfomanager = book_info_manager_stub
+local saved_reader_settings = G_reader_settings
 
 local function virtualPath(...)
     return table.concat({ "/books", real_virtual_path.ROOT_SYMBOL, ... }, "/")
@@ -276,6 +277,48 @@ test("showValues uses facet result count without fetching matching files again",
     assertEqual(buttons[2][1].enabled, true)
     assertEqual(buttons[3][1].text, "Same")
     assertEqual(buttons[3][1].enabled, false)
+end)
+
+test("show passes tab options to facet counts", function()
+    resetUi()
+    local captured_options
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.SERIES_SYMBOL, "Foo"),
+        },
+    }
+    G_reader_settings = {
+        readSetting = function(_self, key)
+            if key == "plainui_tab_view_options" then
+                return {
+                    series = {
+                        filter = "reading",
+                        folder_sort = "book_count",
+                    },
+                }
+            end
+        end,
+    }
+    metadata_source_stub.getFacetValuesWithCount = function(
+            _book_info_manager,
+            _base_dir,
+            _meta_name,
+            _filter_state,
+            options)
+        captured_options = options
+        return {}, 0
+    end
+
+    local ok, err = pcall(function()
+        MetadataFacetDropdown.show(file_manager, {})
+    end)
+    G_reader_settings = saved_reader_settings
+    if not ok then
+        error(err)
+    end
+
+    assertEqual(captured_options.filter, "reading")
+    assertEqual(captured_options.folder_sort, "book_count")
 end)
 
 run()
