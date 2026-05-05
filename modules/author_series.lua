@@ -785,7 +785,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
 
     local function getVirtualLeafListTitle(item)
         local kind = getVirtualLeafListKind(item)
-        if kind == "authors" or kind == "series" then
+        if kind == "authors" or kind == "series" or kind == "keywords" then
             return item.entry.virtual_leaf_title
         end
     end
@@ -799,7 +799,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
             clone[k] = v
         end
         clone.title = title
-        if kind == "authors" then
+        if kind == "authors" or kind == "keywords" then
             clone.authors = nil
         end
         clone.series = nil
