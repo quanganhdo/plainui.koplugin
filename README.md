@@ -25,6 +25,8 @@ KOReader's Battery statistics plugin is optional. If it is enabled, long-pressin
 
 ## Credits
 
+Please visit [plainui.koplugin](https://github.com/quanganhdo/plainui.koplugin) for the latest updates.
+
 Plain UI takes inspiration from [SimpleUI](https://github.com/doctorhetfield-cmd/simpleui.koplugin) and [Project: Title](https://github.com/joshuacant/ProjectTitle).
 
 The metadata browser includes code adapted from [medinauta's BrowseByMetadata user patch](https://github.com/medinauta/Koreader-Patches/blob/main/2-BrowseByMetadata.lua), which was inspired by [poire-z's BrowseByMetadata proof of concept](https://github.com/koreader/koreader/issues/8472).
