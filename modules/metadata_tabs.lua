@@ -3,10 +3,13 @@
 
 local userpatch = require("userpatch")
 local Button = require("ui/widget/button")
+local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Event = require("ui/event")
+local ffiUtil = require("ffi/util")
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
+local FilterState = require("modules.filter_state")
 local Font = require("ui/font")
 local Geom = require("ui/geometry")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
@@ -30,9 +33,99 @@ local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
 local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
 local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
+local DIMENSIONS = {
+    {
+        key = "authors",
+        label = _("Authors"),
+        symbol = AUTHOR_SYMBOL,
+    },
+    {
+        key = "series",
+        label = _("Series"),
+        symbol = SERIES_SYMBOL,
+    },
+    {
+        key = "keywords",
+        label = _("Tags"),
+        symbol = TAG_SYMBOL,
+    },
+}
+local DIMENSION_BY_KEY = {}
+for _, dimension in ipairs(DIMENSIONS) do
+    DIMENSION_BY_KEY[dimension.key] = dimension
+end
+
+local function virtualTextLess(a, b)
+    if a == b then
+        return false
+    elseif a == nil or a == false or a == "" then
+        return false
+    elseif b == nil or b == false or b == "" then
+        return true
+    end
+    return ffiUtil.strcoll(a, b)
+end
+
+local function sortMetadataValues(values)
+    table.sort(values, function(a, b)
+        local av = a[1]
+        local bv = b[1]
+        if av == false or av == nil then
+            return false
+        elseif bv == false or bv == nil then
+            return true
+        end
+        if av == bv then
+            return (a[2] or 0) < (b[2] or 0)
+        end
+        return virtualTextLess(av, bv)
+    end)
+end
+
+local function buildFilterStatePath(base_dir, filter_state)
+    local fragments = {
+        base_dir,
+        VirtualPath.ROOT_SYMBOL,
+    }
+    for _, entry in ipairs(filter_state and filter_state.trail or {}) do
+        local dimension = DIMENSION_BY_KEY[entry.dimension]
+        if dimension then
+            table.insert(fragments, dimension.symbol)
+            table.insert(fragments, VirtualPath.encodeValue(entry.value))
+        end
+    end
+    return table.concat(fragments, "/")
+end
+
+local function buildFilteredPath(base_dir, filter_state, dimension_key, value)
+    local state = FilterState.clone(filter_state or FilterState.new(base_dir))
+    FilterState.addFilter(state, dimension_key, value)
+    return buildFilterStatePath(base_dir, state)
+end
+
+local function buildPreviousFilterPath(base_dir, filter_state)
+    local trail = filter_state and filter_state.trail or {}
+    if #trail == 1 then
+        local dimension = DIMENSION_BY_KEY[trail[1].dimension]
+        if dimension then
+            return table.concat({
+                base_dir,
+                VirtualPath.ROOT_SYMBOL,
+                dimension.symbol,
+            }, "/")
+        end
+    end
+
+    local previous_state = FilterState.new(base_dir)
+    for i = 1, #trail - 1 do
+        local entry = trail[i]
+        FilterState.addFilter(previous_state, entry.dimension, entry.value)
+    end
+    return buildFilterStatePath(base_dir, previous_state)
+end
 
 local function getMetadataLeafInfo(path)
-    local _base_dir, active_dimension, filter_state = VirtualPath.parse(path)
+    local base_dir, active_dimension, filter_state = VirtualPath.parse(path)
     if active_dimension then
         return
     end
@@ -46,7 +139,7 @@ local function getMetadataLeafInfo(path)
 
     return {
         title = title,
-        parent_path = path:gsub("(/[^/]+)$", ""),
+        parent_path = buildPreviousFilterPath(base_dir, filter_state),
     }
 end
 
@@ -101,6 +194,25 @@ local function getBackTitleBarInfo(file_manager)
         title = leaf_info.title,
         parent_path = leaf_info.parent_path,
         current_path = path,
+    }
+end
+
+local function getVirtualDropdownState(file_manager)
+    local file_chooser = file_manager and file_manager.file_chooser
+    local path = file_chooser and file_chooser.path
+    local base_dir, active_dimension, filter_state = VirtualPath.parse(path)
+    if not base_dir or active_dimension then
+        return
+    end
+    if not VirtualPath.getLeafEntry(filter_state) then
+        return
+    end
+    return {
+        file_manager = file_manager,
+        file_chooser = file_chooser,
+        path = path,
+        base_dir = base_dir,
+        filter_state = filter_state,
     }
 end
 
@@ -207,6 +319,7 @@ function MetadataTabsTitleBar:init()
     self.authors_button = self.authors_tab.button
     self.tags_button = self.tags_tab.button
     self.tab_label_height = self.books_button.label_container.dimen.h
+    self.back_chevron_hit_width = self.tab_label_height + self.tab_padding_h
     self.tabs_group = HorizontalGroup:new{
         align = "bottom",
         allow_mirroring = false,
@@ -372,17 +485,19 @@ function MetadataTabsTitleBar:init()
         width = self.back_title_width,
         height = self.tab_label_height,
         bordersize = 0,
-        padding_h = self.tab_padding_h,
+        padding_h = 0,
         padding_v = self.tab_padding_v,
         callback = function()
-            self:onBackTitleTap()
+            self:showDimensionDropdown()
         end,
         show_parent = self.show_parent,
     }
     self.back_chevron_button = Button:new{
         icon = "chevron.left",
+        align = "left",
         icon_width = self.tab_label_height,
         icon_height = self.tab_label_height,
+        width = self.back_chevron_hit_width,
         height = self.tab_label_height,
         bordersize = 0,
         padding_h = 0,
@@ -447,7 +562,7 @@ function MetadataTabsTitleBar:updateBackTitle(refresh)
 
     self.back_title_info = back_title_info
     self.back_title = title
-    self.back_button:setText(title or "", self.back_button.width)
+    self.back_button:setText(title and title .. " \u{25be}" or "", self.back_button.width)
 
     if refresh ~= false then
         UIManager:setDirty(self.show_parent, "ui", self.dimen)
@@ -461,6 +576,141 @@ function MetadataTabsTitleBar:onBackTitleTap()
     if file_chooser and back_title_info then
         file_chooser:changeToPath(back_title_info.parent_path, back_title_info.current_path)
     end
+end
+
+function MetadataTabsTitleBar:getDropdownAnchor()
+    local button = self.back_button
+    return button and button[1] and button[1].dimen or button and button.dimen, true
+end
+
+function MetadataTabsTitleBar:getAvailableMetadataValues(state, dimension)
+    local MetadataSource = require("modules.metadata_source")
+    local BookInfoManager = require("bookinfomanager")
+    local values = MetadataSource.getMatchingMetadataValues(
+        BookInfoManager,
+        state.base_dir,
+        dimension.key,
+        state.filter_state
+    )
+    sortMetadataValues(values)
+    local available_count = 0
+    for _, value in ipairs(values) do
+        if not value.selected then
+            available_count = available_count + 1
+        end
+    end
+    return values, available_count
+end
+
+function MetadataTabsTitleBar:showDimensionDropdown()
+    local file_manager = self.file_manager or FileManager.instance
+    local state = getVirtualDropdownState(file_manager)
+    if not state then
+        return
+    end
+
+    local dialog
+    local buttons = {}
+    for _, dimension in ipairs(DIMENSIONS) do
+        local dimension_ref = dimension
+        local _values, available_count = self:getAvailableMetadataValues(state, dimension_ref)
+        if available_count > 1 then
+            table.insert(buttons, {{
+                text = dimension_ref.label .. " \u{25b8}",
+                align = "left",
+                font_bold = false,
+                callback = function()
+                    if dialog then
+                        UIManager:close(dialog)
+                    end
+                    self:showDimensionValuesDropdown(dimension_ref)
+                end,
+            }})
+        end
+    end
+    if #buttons == 0 then
+        table.insert(buttons, {{
+            text = _("No filters"),
+            align = "left",
+            font_bold = false,
+            enabled = false,
+        }})
+    end
+
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        buttons = buttons,
+        anchor = function()
+            return self:getDropdownAnchor()
+        end,
+    }
+    UIManager:show(dialog)
+end
+
+function MetadataTabsTitleBar:showDimensionValuesDropdown(dimension)
+    local file_manager = self.file_manager or FileManager.instance
+    local state = getVirtualDropdownState(file_manager)
+    if not state or not dimension then
+        return
+    end
+
+    local values = self:getAvailableMetadataValues(state, dimension)
+
+    local dialog
+    local buttons = {
+        {{
+            text = "\u{25c2} " .. _("Back"),
+            align = "left",
+            font_bold = false,
+            callback = function()
+                if dialog then
+                    UIManager:close(dialog)
+                end
+                self:showDimensionDropdown()
+            end,
+        }},
+        {},
+    }
+    for _, value in ipairs(values) do
+        if not value.selected then
+            local value_key = value[1]
+            local text = VirtualPath.displayValue(value_key) .. " \u{25b8}"
+            table.insert(buttons, {{
+                text = text,
+                align = "left",
+                font_bold = false,
+                callback = function()
+                    if dialog then
+                        UIManager:close(dialog)
+                    end
+                    state.file_chooser:changeToPath(buildFilteredPath(
+                        state.base_dir,
+                        state.filter_state,
+                        dimension.key,
+                        value_key
+                    ))
+                end,
+            }})
+        end
+    end
+    if #buttons == 2 then
+        table.insert(buttons, {{
+            text = _("No values"),
+            align = "left",
+            font_bold = false,
+            enabled = false,
+        }})
+    end
+
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        rows_per_page = { 12, 10, 8 },
+        buttons = buttons,
+        anchor = function()
+            return self:getDropdownAnchor()
+        end,
+    }
+    UIManager:show(dialog)
 end
 
 function MetadataTabsTitleBar:updateStatusIndicators(refresh)
