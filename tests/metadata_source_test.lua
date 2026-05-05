@@ -152,6 +152,32 @@ test("getMatchingFiles filters out missing files and unsupported providers", fun
     assertEqual(files[1][1], "/books/ok.epub")
 end)
 
+test("getMatchingFiles filters out supported non-book formats", function()
+    local manager = makeManager({
+        book("/books/ok.epub", "ok.epub", "OK", "Alice", "Foo", "1", "tag"),
+        book("/books/notes.txt", "notes.txt", "Notes", nil, nil, nil, nil),
+        book("/books/readme.md", "readme.md", "Readme", nil, nil, nil, nil),
+        book("/books/script.sh", "script.sh", "Script", nil, nil, nil, nil),
+    })
+    local files = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"))
+
+    assertEqual(#files, 1)
+    assertEqual(files[1][1], "/books/ok.epub")
+end)
+
+test("getMatchingFiles accepts book-like multipart extensions", function()
+    local manager = makeManager({
+        book("/books/a.fb2.zip", "a.fb2.zip", "A", "Alice", "Foo", "1", "tag"),
+        book("/books/b.rtf.zip", "b.rtf.zip", "B", "Bob", "Bar", "2", "tag"),
+        book("/books/c.zip", "c.zip", "C", "Carol", "Baz", "3", "tag"),
+    })
+    local files = MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"))
+
+    assertEqual(#files, 2)
+    assertEqual(files[1][1], "/books/a.fb2.zip")
+    assertEqual(files[2][1], "/books/b.rtf.zip")
+end)
+
 test("getFacetValues groups multi-value facets and marks selected values", function()
     local state = FilterState.new("/books")
     FilterState.addFilter(state, "authors", "Alice")

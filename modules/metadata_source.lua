@@ -11,6 +11,50 @@ local T = ffiUtil.template
 
 local MetadataSource = {}
 
+local BOOK_EXTENSIONS = {
+    azw = true,
+    cbr = true,
+    cbt = true,
+    cbz = true,
+    djv = true,
+    djvu = true,
+    epub = true,
+    epub3 = true,
+    fb2 = true,
+    ["fb2.zip"] = true,
+    fb3 = true,
+    mobi = true,
+    pdf = true,
+    rtf = true,
+    ["rtf.zip"] = true,
+}
+
+local MULTIPART_BOOK_EXTENSIONS = {
+    "fb2.zip",
+    "rtf.zip",
+}
+
+local function getBookExtension(filepath)
+    if not filepath then
+        return
+    end
+
+    local lower_filepath = filepath:lower()
+    for _, extension in ipairs(MULTIPART_BOOK_EXTENSIONS) do
+        local suffix = "." .. extension
+        if lower_filepath:sub(-#suffix) == suffix then
+            return extension
+        end
+    end
+
+    return lower_filepath:match("%.([^%.%/]+)$")
+end
+
+local function isBookFile(filepath)
+    local extension = getBookExtension(filepath)
+    return extension and BOOK_EXTENSIONS[extension] or false
+end
+
 local function addFilterSql(sql, vars, dimension, value)
     local definition = FilterState.DIMENSIONS[dimension]
     if not definition then
@@ -113,7 +157,7 @@ function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filter_sta
         if not row then
             break
         end
-        if lfs.attributes(row[1], "mode") == "file" and DocumentRegistry:hasProvider(row[1]) then
+        if lfs.attributes(row[1], "mode") == "file" and isBookFile(row[1]) and DocumentRegistry:hasProvider(row[1]) then
             table.insert(results, {
                 row[1],
                 row[2],
