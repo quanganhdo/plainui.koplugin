@@ -49,6 +49,11 @@ function VirtualPath.displayValue(value)
     return tostring(value)
 end
 
+function VirtualPath.getLeafEntry(filter_state)
+    local trail = filter_state and filter_state.trail
+    return trail and trail[#trail]
+end
+
 function VirtualPath.findRoot(path)
     if not path then
         return

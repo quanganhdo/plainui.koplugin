@@ -131,8 +131,7 @@ local function sortVirtualMetadataValues(values, meta_name)
 end
 
 local function getVirtualLeafEntry(filter_state)
-    local trail = filter_state and filter_state.trail
-    return trail and trail[#trail]
+    return VirtualPath.getLeafEntry(filter_state)
 end
 
 local function getVirtualLeafSortMode(filter_state)

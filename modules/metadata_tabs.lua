@@ -37,8 +37,7 @@ local function getMetadataLeafInfo(path)
         return
     end
 
-    local trail = filter_state and filter_state.trail
-    local leaf = trail and trail[#trail]
+    local leaf = VirtualPath.getLeafEntry(filter_state)
     if not leaf then
         return
     end
