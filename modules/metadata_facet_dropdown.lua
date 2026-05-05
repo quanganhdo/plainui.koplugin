@@ -10,6 +10,8 @@ local VirtualPath = require("modules.virtual_path")
 local _ = require("gettext")
 
 local MetadataFacetDropdown = {}
+local ROW_FONT_FACE = "cfont"
+local ROW_FONT_SIZE = 20
 
 local DIMENSIONS = {
     {
@@ -89,6 +91,29 @@ local function getAvailableMetadataValues(state, dimension)
     return values, available_count
 end
 
+local function makeNavigationRow(text, count, callback)
+    return {
+        {
+            text = text,
+            align = "left",
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = false,
+            no_vertical_sep = true,
+            callback = callback,
+        },
+        {
+            text = tostring(count or 0),
+            align = "right",
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = false,
+            width = 64,
+            callback = callback,
+        },
+    }
+end
+
 local function showDimensionDropdown(file_manager, anchor)
     local state = getDropdownState(file_manager)
     if not state then
@@ -101,17 +126,12 @@ local function showDimensionDropdown(file_manager, anchor)
         local dimension_ref = dimension
         local _values, available_count = getAvailableMetadataValues(state, dimension_ref)
         if available_count > 1 then
-            table.insert(buttons, {{
-                text = dimension_ref.label .. " \u{25b8}",
-                align = "left",
-                font_bold = false,
-                callback = function()
-                    if dialog then
-                        UIManager:close(dialog)
-                    end
-                    MetadataFacetDropdown.showValues(file_manager, anchor, dimension_ref)
-                end,
-            }})
+            table.insert(buttons, makeNavigationRow(dimension_ref.label, available_count, function()
+                if dialog then
+                    UIManager:close(dialog)
+                end
+                MetadataFacetDropdown.showValues(file_manager, anchor, dimension_ref)
+            end))
         end
     end
     if #buttons == 0 then
@@ -146,9 +166,11 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
     local dialog
     local buttons = {
         {{
-            text = "\u{25c2} " .. _("Back"),
+            text = _("Back"),
             align = "left",
-            font_bold = false,
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = true,
             callback = function()
                 if dialog then
                     UIManager:close(dialog)
@@ -156,31 +178,24 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
                 showDimensionDropdown(file_manager, anchor)
             end,
         }},
-        {},
     }
     for _, value in ipairs(values) do
         if not value.selected then
             local value_key = value[1]
-            local text = VirtualPath.displayValue(value_key) .. " \u{25b8}"
-            table.insert(buttons, {{
-                text = text,
-                align = "left",
-                font_bold = false,
-                callback = function()
-                    if dialog then
-                        UIManager:close(dialog)
-                    end
-                    state.file_chooser:changeToPath(VirtualPath.buildFilteredPath(
-                        state.base_dir,
-                        state.filter_state,
-                        dimension.key,
-                        value_key
-                    ))
-                end,
-            }})
+            table.insert(buttons, makeNavigationRow(VirtualPath.displayValue(value_key), value[2], function()
+                if dialog then
+                    UIManager:close(dialog)
+                end
+                state.file_chooser:changeToPath(VirtualPath.buildFilteredPath(
+                    state.base_dir,
+                    state.filter_state,
+                    dimension.key,
+                    value_key
+                ))
+            end))
         end
     end
-    if #buttons == 2 then
+    if #buttons == 1 then
         table.insert(buttons, {{
             text = _("No values"),
             align = "left",
