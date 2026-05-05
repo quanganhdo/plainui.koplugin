@@ -5,7 +5,22 @@ local TestHelper = require("tests.test_helper")
 local assertEqual = TestHelper.assertEqual
 local test, run = TestHelper.newSuite()
 
+local real_virtual_path = require("modules.virtual_path")
+local metadata_source_stub = {}
+local ui_manager_stub = {
+    shown = {},
+    closed = {},
+    show = function(self, dialog)
+        table.insert(self.shown, dialog)
+    end,
+    close = function(self, dialog)
+        table.insert(self.closed, dialog)
+    end,
+}
+local file_manager_stub = {}
+local book_info_manager_stub = {}
 local saved_loaded = {
+    bookinfomanager = package.loaded.bookinfomanager,
     buttondialog = package.loaded["ui/widget/buttondialog"],
     ffi_util = package.loaded["ffi/util"],
     filemanager = package.loaded["apps/filemanager/filemanager"],
@@ -25,10 +40,11 @@ package.loaded["ffi/util"] = {
         return a < b
     end,
 }
-package.loaded["apps/filemanager/filemanager"] = {}
-package.loaded["modules.metadata_source"] = {}
-package.loaded["ui/uimanager"] = {}
-package.loaded["modules.virtual_path"] = {}
+package.loaded["apps/filemanager/filemanager"] = file_manager_stub
+package.loaded["bookinfomanager"] = book_info_manager_stub
+package.loaded["modules.metadata_source"] = metadata_source_stub
+package.loaded["ui/uimanager"] = ui_manager_stub
+package.loaded["modules.virtual_path"] = real_virtual_path
 package.loaded.gettext = function(text)
     return text
 end
@@ -43,6 +59,16 @@ package.loaded["modules.metadata_source"] = saved_loaded.metadata_source
 package.loaded["ui/uimanager"] = saved_loaded.uimanager
 package.loaded["modules.virtual_path"] = saved_loaded.virtual_path
 package.loaded.gettext = saved_loaded.gettext
+package.loaded.bookinfomanager = book_info_manager_stub
+
+local function virtualPath(...)
+    return table.concat({ "/books", real_virtual_path.ROOT_SYMBOL, ... }, "/")
+end
+
+local function resetUi()
+    ui_manager_stub.shown = {}
+    ui_manager_stub.closed = {}
+end
 
 test("second dropdown treats same-count values as disabled and moves them last", function()
     local values = {
@@ -63,6 +89,120 @@ test("second dropdown treats same-count values as disabled and moves them last",
     assertEqual(#non_narrowing_values, 2)
     assertEqual(non_narrowing_values[1][1], "Same")
     assertEqual(non_narrowing_values[2][1], "Wider")
+end)
+
+test("show does nothing when path is still on an active dimension", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice", real_virtual_path.KEYWORD_SYMBOL),
+        },
+    }
+
+    MetadataFacetDropdown.show(file_manager, {})
+
+    assertEqual(#ui_manager_stub.shown, 0)
+end)
+
+test("show omits dimensions whose values are already selected", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice"),
+        },
+    }
+    metadata_source_stub.getMatchingMetadataValues = function(_book_info_manager, _base_dir, dimension)
+        if dimension == "authors" then
+            return {
+                { "Alice", 4, selected = true },
+            }
+        elseif dimension == "series" then
+            return {
+                { "Foo", 2 },
+                { "Already selected", 1, selected = true },
+            }
+        elseif dimension == "keywords" then
+            return {
+                { "award", 1 },
+                { "Already selected", 1, selected = true },
+            }
+        end
+        return {}
+    end
+
+    MetadataFacetDropdown.show(file_manager, {})
+
+    local buttons = ui_manager_stub.shown[1].buttons
+    assertEqual(#buttons, 2)
+    assertEqual(buttons[1][1].text, "Series")
+    assertEqual(buttons[1][2].text, "1")
+    assertEqual(buttons[2][1].text, "Tags")
+    assertEqual(buttons[2][2].text, "1")
+end)
+
+test("show displays no filters row when every available value is selected", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice"),
+        },
+    }
+    metadata_source_stub.getMatchingMetadataValues = function()
+        return {
+            { "Selected", 1, selected = true },
+        }
+    end
+
+    MetadataFacetDropdown.show(file_manager, {})
+
+    local buttons = ui_manager_stub.shown[1].buttons
+    assertEqual(#buttons, 1)
+    assertEqual(buttons[1][1].text, "No filters")
+    assertEqual(buttons[1][1].enabled, false)
+end)
+
+test("showValues sorts values, hides selected values, and disables non-narrowing rows", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.AUTHOR_SYMBOL, "Alice"),
+            changeToPath = function() end,
+        },
+    }
+    metadata_source_stub.getMatchingMetadataValues = function()
+        return {
+            { "Zed", 1 },
+            { "Same", 4 },
+            { false, 1 },
+            { "Alpha", 1 },
+            { "Selected", 1, selected = true },
+        }
+    end
+    metadata_source_stub.getMatchingFiles = function()
+        return {
+            { "/books/a.epub" },
+            { "/books/b.epub" },
+            { "/books/c.epub" },
+            { "/books/d.epub" },
+        }
+    end
+
+    MetadataFacetDropdown.showValues(file_manager, {}, {
+        key = "authors",
+        label = "Authors",
+    })
+
+    local buttons = ui_manager_stub.shown[1].buttons
+    assertEqual(#buttons, 5)
+    assertEqual(buttons[1][1].text, "Back")
+    assertEqual(buttons[2][1].text, "Alpha")
+    assertEqual(buttons[2][1].enabled, true)
+    assertEqual(buttons[3][1].text, "Zed")
+    assertEqual(buttons[3][1].enabled, true)
+    assertEqual(buttons[4][1].text, real_virtual_path.EMPTY_VALUE_SYMBOL)
+    assertEqual(buttons[4][1].enabled, true)
+    assertEqual(buttons[5][1].text, "Same")
+    assertEqual(buttons[5][1].enabled, false)
 end)
 
 run()

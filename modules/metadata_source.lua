@@ -55,6 +55,19 @@ local function isBookFile(filepath)
     return extension and BOOK_EXTENSIONS[extension] or false
 end
 
+local function escapeGlobPattern(text)
+    return tostring(text):gsub("([%*%?%[%]])", function(char)
+        return "[" .. char .. "]"
+    end)
+end
+
+local function normalizeBaseDir(base_dir)
+    while #base_dir > 1 and base_dir:sub(-1) == "/" do
+        base_dir = base_dir:sub(1, -2)
+    end
+    return base_dir
+end
+
 local function addFilterSql(sql, vars, dimension, value)
     local definition = FilterState.DIMENSIONS[dimension]
     if not definition then
@@ -137,16 +150,18 @@ function MetadataSource.getMatchingFiles(book_info_manager, base_dir, filter_sta
     if not base_dir then
         return {}
     end
+    base_dir = normalizeBaseDir(base_dir)
     local state = filter_state or FilterState.new(base_dir)
     local vars = {}
     local sql = "select directory||filename, filename, title, authors, series, series_index, keywords from bookinfo where directory glob ? and unsupported is NULL"
-    table.insert(vars, base_dir..'/*')
+    table.insert(vars, escapeGlobPattern(base_dir)..'/*')
     for _, filter in ipairs(state.trail or {}) do
         sql = addFilterSql(sql, vars, filter.dimension, filter.value)
     end
     sql = sql .. " order by directory asc, filename asc"
+    limit = tonumber(limit)
     if limit then
-        sql = sql .. " limit " .. tonumber(limit)
+        sql = sql .. " limit " .. limit
     end
     book_info_manager:openDbConnection()
     local stmt = book_info_manager.db_conn:prepare(sql)

@@ -64,7 +64,19 @@ function VirtualPath.findRoot(path)
     if not path then
         return
     end
-    return path:find("/" .. VirtualPath.ROOT_SYMBOL, 1, true)
+    local pattern = "/" .. VirtualPath.ROOT_SYMBOL
+    local init = 1
+    while true do
+        local root_start, root_end = path:find(pattern, init, true)
+        if not root_start then
+            return
+        end
+        local next_char = path:sub(root_end + 1, root_end + 1)
+        if next_char == "" or next_char == "/" then
+            return root_start, root_end
+        end
+        init = root_end + 1
+    end
 end
 
 function VirtualPath.getFragments(path)

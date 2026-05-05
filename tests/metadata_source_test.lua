@@ -140,6 +140,33 @@ test("getMatchingFiles uses is-null SQL for missing facet values", function()
     assertEqual(manager.bound[1], "/books/*")
 end)
 
+test("getMatchingFiles ignores non-numeric limits", function()
+    local manager = makeManager({
+        book("/books/a.epub", "a.epub", "A", "Alice", "Foo", "1", "tag"),
+    })
+
+    local ok, err = pcall(function()
+        MetadataSource.getMatchingFiles(manager, "/books", FilterState.new("/books"), "not a number")
+    end)
+
+    assertTruthy(ok, err)
+    assertEqual(manager.sql:find("limit", 1, true), nil)
+end)
+
+test("getMatchingFiles escapes glob metacharacters in base directory", function()
+    local manager = makeManager({})
+    MetadataSource.getMatchingFiles(manager, "/books/[drafts]?*", FilterState.new("/books/[drafts]?*"))
+
+    assertEqual(manager.bound[1], "/books/[[]drafts[]][?][*]/*")
+end)
+
+test("getMatchingFiles normalizes trailing slash in base directory glob", function()
+    local manager = makeManager({})
+    MetadataSource.getMatchingFiles(manager, "/books/", FilterState.new("/books/"))
+
+    assertEqual(manager.bound[1], "/books/*")
+end)
+
 test("getMatchingFiles filters out missing files and unsupported providers", function()
     local manager = makeManager({
         book("/books/ok.epub", "ok.epub", "OK", "Alice", "Foo", "1", "tag"),

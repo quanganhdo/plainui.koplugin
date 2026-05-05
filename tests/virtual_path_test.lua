@@ -56,6 +56,52 @@ test("parse preserves empty and nil-like facet display values", function()
     assertEqual(VirtualPath.displayValue(missing_state.trail[1].value), VirtualPath.EMPTY_VALUE_SYMBOL)
 end)
 
+test("parse ignores unknown fragments without a pending dimension", function()
+    local _base_dir, active_dimension, state = VirtualPath.parse(virtualPath(
+        "unknown",
+        VirtualPath.AUTHOR_SYMBOL, "Alice",
+        "ignored"
+    ))
+
+    assertEqual(active_dimension, nil)
+    assertEqual(#state.trail, 1)
+    assertEqual(state.trail[1].dimension, "authors")
+    assertEqual(state.trail[1].value, "Alice")
+end)
+
+test("parse preserves dangling dimensions as active dimensions", function()
+    local _base_dir, active_dimension, state = VirtualPath.parse(virtualPath(
+        VirtualPath.AUTHOR_SYMBOL, "Alice",
+        VirtualPath.KEYWORD_SYMBOL
+    ))
+
+    assertEqual(active_dimension, "keywords")
+    assertEqual(state.active_dimension, "keywords")
+    assertEqual(#state.trail, 1)
+    assertEqual(state.trail[1].dimension, "authors")
+end)
+
+test("parse tolerates trailing slashes", function()
+    local base_dir, active_dimension, state = VirtualPath.parse(virtualPath(
+        VirtualPath.AUTHOR_SYMBOL, "Alice"
+    ) .. "/")
+
+    assertEqual(base_dir, "/books")
+    assertEqual(active_dimension, nil)
+    assertEqual(#state.trail, 1)
+    assertEqual(state.trail[1].value, "Alice")
+end)
+
+test("findRoot requires the virtual root symbol to be a path segment", function()
+    local path = "/books/" .. VirtualPath.ROOT_SYMBOL .. "-notes"
+    local base_dir, active_dimension, state = VirtualPath.parse(path)
+
+    assertEqual(VirtualPath.findRoot(path), nil)
+    assertEqual(base_dir, nil)
+    assertEqual(active_dimension, nil)
+    assertEqual(state, nil)
+end)
+
 test("active dimension is separate from deepest selected leaf", function()
     local _base_dir, active_dimension, state = VirtualPath.parse(virtualPath(
         VirtualPath.AUTHOR_SYMBOL, "Alice",
