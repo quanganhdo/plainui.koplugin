@@ -17,6 +17,12 @@ local META_BY_SYMBOL = {
     [VirtualPath.KEYWORD_SYMBOL] = "keywords",
 }
 
+local SYMBOL_BY_META = {
+    authors = VirtualPath.AUTHOR_SYMBOL,
+    series = VirtualPath.SERIES_SYMBOL,
+    keywords = VirtualPath.KEYWORD_SYMBOL,
+}
+
 function VirtualPath.encodeValue(value)
     if value == false or value == nil then
         return VirtualPath.EMPTY_VALUE_SYMBOL
@@ -100,6 +106,52 @@ function VirtualPath.getBrowsePath(base_dir, item)
         return
     end
     return string.format("%s/%s/%s", base_dir, VirtualPath.ROOT_SYMBOL, item.symbol)
+end
+
+function VirtualPath.getDimensionSymbol(dimension)
+    return SYMBOL_BY_META[dimension]
+end
+
+function VirtualPath.buildFilterStatePath(base_dir, filter_state)
+    local fragments = {
+        base_dir,
+        VirtualPath.ROOT_SYMBOL,
+    }
+    for _, entry in ipairs(filter_state and filter_state.trail or {}) do
+        local symbol = VirtualPath.getDimensionSymbol(entry.dimension)
+        if symbol then
+            table.insert(fragments, symbol)
+            table.insert(fragments, VirtualPath.encodeValue(entry.value))
+        end
+    end
+    return table.concat(fragments, "/")
+end
+
+function VirtualPath.buildFilteredPath(base_dir, filter_state, dimension, value)
+    local state = FilterState.clone(filter_state or FilterState.new(base_dir))
+    FilterState.addFilter(state, dimension, value)
+    return VirtualPath.buildFilterStatePath(base_dir, state)
+end
+
+function VirtualPath.buildPreviousFilterPath(base_dir, filter_state)
+    local trail = filter_state and filter_state.trail or {}
+    if #trail == 1 then
+        local symbol = VirtualPath.getDimensionSymbol(trail[1].dimension)
+        if symbol then
+            return table.concat({
+                base_dir,
+                VirtualPath.ROOT_SYMBOL,
+                symbol,
+            }, "/")
+        end
+    end
+
+    local previous_state = FilterState.new(base_dir)
+    for i = 1, #trail - 1 do
+        local entry = trail[i]
+        FilterState.addFilter(previous_state, entry.dimension, entry.value)
+    end
+    return VirtualPath.buildFilterStatePath(base_dir, previous_state)
 end
 
 function VirtualPath.parse(path)
