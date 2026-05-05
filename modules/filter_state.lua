@@ -12,7 +12,7 @@ FilterState.DIMENSIONS = {
     series = {
         column = "series",
         multi_value = false,
-        repeat_mode = "replace",
+        repeat_mode = "once",
     },
     keywords = {
         column = "keywords",
@@ -91,6 +91,8 @@ function FilterState.addFilter(state, dimension, value)
             end
         end
         state.trail = next_trail
+    elseif definition.repeat_mode == "once" and state.filters[dimension] and #state.filters[dimension] > 0 then
+        return state
     end
 
     local selected = state.selected[dimension]

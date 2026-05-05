@@ -98,7 +98,7 @@ test("duplicate repeated values are ignored", function()
     assertTruthy(state.selected.authors.Alice)
 end)
 
-test("single-value repeated dimensions replace earlier values", function()
+test("single-use repeated dimensions keep their first value", function()
     local _base_dir, _active_dimension, state = VirtualPath.parse(virtualPath(
         VirtualPath.SERIES_SYMBOL, "Foo",
         VirtualPath.AUTHOR_SYMBOL, "Alice",
@@ -106,14 +106,14 @@ test("single-value repeated dimensions replace earlier values", function()
     ))
 
     assertEqual(#state.trail, 2)
-    assertEqual(state.trail[1].dimension, "authors")
-    assertEqual(state.trail[1].value, "Alice")
-    assertEqual(state.trail[2].dimension, "series")
-    assertEqual(state.trail[2].value, "Bar")
+    assertEqual(state.trail[1].dimension, "series")
+    assertEqual(state.trail[1].value, "Foo")
+    assertEqual(state.trail[2].dimension, "authors")
+    assertEqual(state.trail[2].value, "Alice")
     assertEqual(#state.filters.series, 1)
-    assertEqual(state.filters.series[1], "Bar")
-    assertEqual(state.selected.series.Foo, nil)
-    assertTruthy(state.selected.series.Bar)
+    assertEqual(state.filters.series[1], "Foo")
+    assertTruthy(state.selected.series.Foo)
+    assertEqual(state.selected.series.Bar, nil)
 end)
 
 test("withoutDimension removes a dimension while preserving remaining trail order", function()

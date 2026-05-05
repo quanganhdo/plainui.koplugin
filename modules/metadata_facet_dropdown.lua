@@ -104,7 +104,7 @@ local function makeNavigationRow(text, count, callback)
         },
         {
             text = tostring(count or 0),
-            align = "right",
+            align = "center",
             font_face = ROW_FONT_FACE,
             font_size = ROW_FONT_SIZE,
             font_bold = false,
@@ -125,7 +125,7 @@ local function showDimensionDropdown(file_manager, anchor)
     for _, dimension in ipairs(DIMENSIONS) do
         local dimension_ref = dimension
         local _values, available_count = getAvailableMetadataValues(state, dimension_ref)
-        if available_count > 1 then
+        if available_count > 0 then
             table.insert(buttons, makeNavigationRow(dimension_ref.label, available_count, function()
                 if dialog then
                     UIManager:close(dialog)
