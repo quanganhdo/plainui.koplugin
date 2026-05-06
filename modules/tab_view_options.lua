@@ -37,6 +37,7 @@ local VALID = {
             legacy = true,
             recent = true,
             title = true,
+            progress = true,
         },
     },
     metadata = {

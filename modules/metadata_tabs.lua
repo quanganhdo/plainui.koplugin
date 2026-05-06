@@ -104,6 +104,7 @@ local BOOKS_FILTER_STATUS = {
 local BOOKS_SORT_COLLATE = {
     recent = "access",
     title = "title",
+    progress = "percent_natural",
 }
 local TAB_SELECTED_SUFFIX = " \u{25be}"
 local TAB_UNSELECTED_SUFFIX = "  "

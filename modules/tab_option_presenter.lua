@@ -11,7 +11,7 @@ local FILTER_VALUES = {
 }
 
 local SORT_VALUES = {
-    books = { "legacy", "recent", "title" },
+    books = { "legacy", "recent", "title", "progress" },
     metadata = { "name", "book_count" },
 }
 
@@ -54,6 +54,7 @@ function TabOptionPresenter.getSortLabel(value, tab_key)
         legacy = _("KOReader setting"),
         recent = _("Recent"),
         title = _("Title"),
+        progress = _("Progress"),
         name = name_labels[tab_key] or _("Name"),
         book_count = _("Number of books"),
     }

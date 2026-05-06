@@ -110,6 +110,16 @@ test("set persists valid options", function()
     end)
 end)
 
+test("books accepts progress sort", function()
+    withSettings(nil, function(getSaved)
+        local ok = TabViewOptions.set("books", "sort", "progress")
+        local saved = getSaved()
+
+        assertEqual(ok, true)
+        assertEqual(saved.books.sort, "progress")
+    end)
+end)
+
 test("set rejects metadata legacy values", function()
     withSettings(nil, function(getSaved)
         local ok = TabViewOptions.set("authors", "filter", "legacy")
