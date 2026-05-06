@@ -4,9 +4,11 @@
 local ButtonDialog = require("ui/widget/buttondialog")
 local ffiUtil = require("ffi/util")
 local FileManager = require("apps/filemanager/filemanager")
+local FontOk, Font = pcall(require, "ui/font")
 local MetadataSource = require("modules.metadata_source")
 local Size = require("ui/size")
 local TabViewOptions = require("modules.tab_view_options")
+local TextWidgetOk, TextWidget = pcall(require, "ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VirtualPath = require("modules.virtual_path")
 local _ = require("gettext")
@@ -14,7 +16,12 @@ local _ = require("gettext")
 local MetadataFacetDropdown = {}
 local ROW_FONT_FACE = "cfont"
 local ROW_FONT_SIZE = 20
-local ROW_COUNT_WIDTH = 2 * Size.padding.large + Size.padding.default * 6
+local VALUE_LABEL_MAX_CHARS = 32
+local OPTION_RADIO_SELECTED = "\u{25c9}"
+local OPTION_RADIO_UNSELECTED = "\u{25ef}"
+
+local FILTER_VALUES = { "all", "unread", "reading", "finished" }
+local SORT_VALUES = { "name", "book_count" }
 
 local DIMENSIONS = {
     {
@@ -30,6 +37,48 @@ local DIMENSIONS = {
         label = _("Tags"),
     },
 }
+
+local row_label_width
+local row_radio_width
+
+local function measureTextWidth(text, bold)
+    if FontOk and TextWidgetOk then
+        local widget = TextWidget:new{
+            text = text,
+            face = Font:getFace(ROW_FONT_FACE, ROW_FONT_SIZE),
+            bold = bold or false,
+        }
+        local width = widget:getSize().w
+        widget:free()
+        return width
+    end
+    return #tostring(text or "") * ROW_FONT_SIZE
+end
+
+local function getRowLabelWidth()
+    if not row_label_width then
+        local width = measureTextWidth(_("Book status"), false)
+        for _, dimension in ipairs(DIMENSIONS) do
+            width = math.max(width, measureTextWidth(dimension.label, false))
+        end
+        row_label_width = width + 2 * Size.padding.large + Size.padding.default
+    end
+    return row_label_width
+end
+
+local function getRowCountWidth(count)
+    return measureTextWidth(tostring(count or 0), false) + 2 * Size.padding.large + Size.padding.default
+end
+
+local function getRowRadioWidth()
+    if not row_radio_width then
+        row_radio_width = math.max(
+            measureTextWidth(OPTION_RADIO_SELECTED, false),
+            measureTextWidth(OPTION_RADIO_UNSELECTED, false)
+        ) + 2 * Size.padding.large + Size.padding.default
+    end
+    return row_radio_width
+end
 
 local function virtualTextLess(a, b)
     if a == b then
@@ -69,12 +118,45 @@ local function getDropdownState(file_manager)
     if not VirtualPath.getLeafEntry(filter_state) then
         return
     end
+    local tab_key = VirtualPath.getTabKey(path)
     return {
         file_chooser = file_chooser,
         base_dir = base_dir,
         filter_state = filter_state,
-        tab_options = TabViewOptions.getMetadataOptions(VirtualPath.getTabKey(path)),
+        tab_key = tab_key,
+        tab_options = TabViewOptions.getMetadataOptions(tab_key),
     }
+end
+
+local function getFilterLabel(value)
+    local labels = {
+        all = _("All"),
+        unread = _("Unread"),
+        reading = _("Reading"),
+        finished = _("Finished"),
+    }
+    return labels[value] or labels.all
+end
+
+local function getSortLabel(value, tab_key)
+    local name_labels = {
+        authors = _("Author name"),
+        series = _("Series title"),
+        tags = _("Tag name"),
+    }
+    local labels = {
+        name = name_labels[tab_key] or _("Name"),
+        book_count = _("Number of books"),
+    }
+    return labels[value] or labels.name
+end
+
+local function getTabFieldValues(field)
+    return field == "filter" and FILTER_VALUES or SORT_VALUES
+end
+
+local function getTabOptionField(field)
+    return field == "filter" and "filter" or "folder_sort"
 end
 
 local function countAvailableValues(values)
@@ -109,6 +191,16 @@ local function getAvailableMetadataValues(state, dimension)
     return values, countAvailableValues(values), result_count
 end
 
+local function getMetadataFilterCounts(state)
+    local BookInfoManager = require("bookinfomanager")
+    return MetadataSource.getStatusFilterCounts(
+        BookInfoManager,
+        state.base_dir,
+        state.filter_state,
+        state.tab_options
+    )
+end
+
 local function splitValuesByNarrowing(values, current_result_count)
     local useful_values = {}
     local non_narrowing_values = {}
@@ -124,7 +216,17 @@ local function splitValuesByNarrowing(values, current_result_count)
     return useful_values, non_narrowing_values
 end
 
-local function makeNavigationRow(text, count, callback, enabled)
+local function getTextColumnWidth(values)
+    local width = 0
+    for _, value in ipairs(values) do
+        local text = type(value) == "table" and value.text or value
+        width = math.max(width, measureTextWidth(text, false))
+    end
+    local max_width = measureTextWidth(string.rep("W", VALUE_LABEL_MAX_CHARS), false)
+    return math.min(width, max_width) + 2 * Size.padding.large + Size.padding.default
+end
+
+local function makeNavigationRow(text, count, callback, enabled, count_width, label_width)
     enabled = enabled ~= false
     return {
         {
@@ -135,6 +237,8 @@ local function makeNavigationRow(text, count, callback, enabled)
             font_bold = false,
             enabled = enabled,
             no_vertical_sep = true,
+            width = label_width or getRowLabelWidth(),
+            avoid_text_truncation = false,
             callback = callback or function() end,
         },
         {
@@ -144,13 +248,152 @@ local function makeNavigationRow(text, count, callback, enabled)
             font_size = ROW_FONT_SIZE,
             font_bold = false,
             enabled = enabled,
-            width = ROW_COUNT_WIDTH,
+            no_vertical_sep = true,
+            width = count_width or getRowCountWidth(count),
+            avoid_text_truncation = false,
             callback = callback or function() end,
+        },
+        {
+            text = "",
+            enabled = false,
+            no_vertical_sep = true,
+            callback = function() end,
         },
     }
 end
 
-local function showDimensionDropdown(file_manager, anchor)
+local function makeSummaryRow(label, value, callback)
+    return {
+        {
+            text = label,
+            align = "left",
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = false,
+            no_vertical_sep = true,
+            width = getRowLabelWidth(),
+            avoid_text_truncation = false,
+            callback = callback,
+        },
+        {
+            text = value,
+            align = "left",
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = true,
+            avoid_text_truncation = false,
+            callback = callback,
+        },
+    }
+end
+
+local function makeSeparatorRow()
+    return {}
+end
+
+local function refreshAfterOptionChange(state)
+    if state.file_chooser and state.file_chooser.refreshPath then
+        state.file_chooser:refreshPath()
+    end
+end
+
+local showDimensionDropdown
+
+local function showTabOptionValues(file_manager, anchor, field)
+    local state = getDropdownState(file_manager)
+    if not state then
+        return
+    end
+
+    local option_field = getTabOptionField(field)
+    local current_value = state.tab_options[option_field]
+    local filter_counts
+    local count_width
+    if field == "filter" then
+        filter_counts = getMetadataFilterCounts(state)
+        local max_count = 0
+        for _, value in ipairs(getTabFieldValues(field)) do
+            max_count = math.max(max_count, filter_counts[value] or 0)
+        end
+        count_width = getRowCountWidth(max_count)
+    end
+
+    local dialog
+    local buttons = {
+        {{
+            text = _("Back"),
+            align = "left",
+            font_face = ROW_FONT_FACE,
+            font_size = ROW_FONT_SIZE,
+            font_bold = true,
+            callback = function()
+                if dialog then
+                    UIManager:close(dialog)
+                end
+                showDimensionDropdown(file_manager, anchor)
+            end,
+        }},
+    }
+
+    for _, value in ipairs(getTabFieldValues(field)) do
+        local value_ref = value
+        local selected = value_ref == current_value
+        local function selectValue()
+            if dialog then
+                UIManager:close(dialog)
+            end
+            TabViewOptions.set(state.tab_key, option_field, value_ref)
+            refreshAfterOptionChange(state)
+            showTabOptionValues(file_manager, anchor, field)
+        end
+        local row = {
+            {
+                text = selected and OPTION_RADIO_SELECTED or OPTION_RADIO_UNSELECTED,
+                align = "center",
+                font_face = ROW_FONT_FACE,
+                font_size = ROW_FONT_SIZE,
+                font_bold = false,
+                no_vertical_sep = true,
+                width = getRowRadioWidth(),
+                avoid_text_truncation = false,
+                callback = selectValue,
+            },
+            {
+                text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, state.tab_key),
+                align = "left",
+                font_face = ROW_FONT_FACE,
+                font_size = ROW_FONT_SIZE,
+                font_bold = false,
+                no_vertical_sep = true,
+                avoid_text_truncation = false,
+                callback = selectValue,
+            },
+        }
+        local count = filter_counts and filter_counts[value_ref]
+        if count ~= nil then
+            table.insert(row, {
+                text = tostring(count),
+                align = "left",
+                font_face = ROW_FONT_FACE,
+                font_size = ROW_FONT_SIZE,
+                font_bold = false,
+                width = count_width or getRowCountWidth(count),
+                avoid_text_truncation = false,
+                callback = selectValue,
+            })
+        end
+        table.insert(buttons, row)
+    end
+
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        buttons = buttons,
+        anchor = anchor,
+    }
+    UIManager:show(dialog)
+end
+
+showDimensionDropdown = function(file_manager, anchor)
     local state = getDropdownState(file_manager)
     if not state then
         return
@@ -158,21 +401,46 @@ local function showDimensionDropdown(file_manager, anchor)
 
     local dialog
     local buttons = {}
+    local function showOptionValues(field)
+        if dialog then
+            UIManager:close(dialog)
+        end
+        showTabOptionValues(file_manager, anchor, field)
+    end
+    table.insert(buttons, makeSummaryRow(
+        _("Book status"),
+        getFilterLabel(state.tab_options.filter),
+        function()
+            showOptionValues("filter")
+        end
+    ))
+    table.insert(buttons, makeSeparatorRow())
+
+    local dimension_counts = {}
+    local max_count = 0
+    for _, dimension in ipairs(DIMENSIONS) do
+        local available_count = getAvailableMetadataValueCount(state, dimension)
+        dimension_counts[dimension.key] = available_count
+        max_count = math.max(max_count, available_count)
+    end
+    local count_width = getRowCountWidth(max_count)
+    local has_dimension_rows = false
     for _, dimension in ipairs(DIMENSIONS) do
         local dimension_ref = dimension
-        local available_count = getAvailableMetadataValueCount(state, dimension_ref)
+        local available_count = dimension_counts[dimension_ref.key]
         if available_count > 0 then
+            has_dimension_rows = true
             table.insert(buttons, makeNavigationRow(dimension_ref.label, available_count, function()
                 if dialog then
                     UIManager:close(dialog)
                 end
                 MetadataFacetDropdown.showValues(file_manager, anchor, dimension_ref)
-            end))
+            end, true, count_width))
         end
     end
-    if #buttons == 0 then
+    if not has_dimension_rows then
         table.insert(buttons, {{
-            text = _("No filters"),
+            text = _("No relevant filters"),
             align = "left",
             font_bold = false,
             enabled = false,
@@ -217,6 +485,17 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
     }
     local useful_values, non_narrowing_values = splitValuesByNarrowing(values, current_result_count)
 
+    local max_count = 0
+    local value_labels = {}
+    for _, value in ipairs(values) do
+        if not value.selected then
+            max_count = math.max(max_count, value[2] or 0)
+            table.insert(value_labels, VirtualPath.displayValue(value[1]))
+        end
+    end
+    local count_width = getRowCountWidth(max_count)
+    local label_width = getTextColumnWidth(value_labels)
+
     local function addValueRow(value, enabled)
         local value_key = value[1]
         table.insert(buttons, makeNavigationRow(VirtualPath.displayValue(value_key), value[2], function()
@@ -229,7 +508,7 @@ function MetadataFacetDropdown.showValues(file_manager, anchor, dimension)
                 dimension.key,
                 value_key
             ))
-        end, enabled))
+        end, enabled, count_width, label_width))
     end
 
     for _, value in ipairs(useful_values) do

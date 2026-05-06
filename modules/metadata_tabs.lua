@@ -119,11 +119,32 @@ local OPTION_RADIO_SELECTED = "\u{25c9}"
 local OPTION_RADIO_UNSELECTED = "\u{25ef}"
 local OPTION_RADIO_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
 local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
-local TAB_OPTIONS_LABEL_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(56)
+local tab_options_label_width
+
+local function measureTextWidth(text, font_face, font_size, bold)
+    local widget = TextWidget:new{
+        text = text,
+        face = Font:getFace(font_face, font_size),
+        bold = bold or false,
+    }
+    local width = widget:getSize().w
+    widget:free()
+    return width
+end
+
+local function getTabOptionsLabelWidth()
+    if not tab_options_label_width then
+        tab_options_label_width = math.max(
+            measureTextWidth(_("Book status"), "cfont", 20, false),
+            measureTextWidth(_("Sort by"), "cfont", 20, false)
+        ) + 2 * Size.padding.large + Screen:scaleBySize(4)
+    end
+    return tab_options_label_width
+end
 
 local function getFilterLabel(value)
     local labels = {
-        legacy = _("KOReader Setting"),
+        legacy = _("KOReader setting"),
         all = _("All"),
         unread = _("Unread"),
         reading = _("Reading"),
@@ -134,16 +155,16 @@ end
 
 local function getSortLabel(value, tab_key)
     local name_labels = {
-        authors = _("Author Name"),
-        series = _("Series Title"),
-        tags = _("Tag Name"),
+        authors = _("Author name"),
+        series = _("Series title"),
+        tags = _("Tag name"),
     }
     local labels = {
-        legacy = _("KOReader Setting"),
+        legacy = _("KOReader setting"),
         recent = _("Recent"),
         title = _("Title"),
         name = name_labels[tab_key] or _("Name"),
-        book_count = _("Number of Books"),
+        book_count = _("Number of books"),
     }
     return labels[value] or labels.name
 end
@@ -667,7 +688,7 @@ function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
                 align = "left",
                 font_bold = false,
                 no_vertical_sep = true,
-                width = TAB_OPTIONS_LABEL_WIDTH,
+                width = getTabOptionsLabelWidth(),
                 callback = function()
                     showValues(field)
                 end,
@@ -683,8 +704,8 @@ function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
         }
     end
     local buttons = {
-        makeSummaryRow(_("Filter"), getFilterLabel(options.filter), "filter"),
-        makeSummaryRow(_("Sort"), getSortLabel(sort_value, tab_key), "sort"),
+        makeSummaryRow(_("Book status"), getFilterLabel(options.filter), "filter"),
+        makeSummaryRow(_("Sort by"), getSortLabel(sort_value, tab_key), "sort"),
     }
     dialog = ButtonDialog:new{
         shrink_unneeded_width = true,

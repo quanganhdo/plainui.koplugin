@@ -16,6 +16,14 @@ metadata_source_stub.getFacetValuesWithCount = function(book_info_manager, base_
         or {}
     return values, #files
 end
+metadata_source_stub.getStatusFilterCounts = function()
+    return {
+        all = 4,
+        unread = 1,
+        reading = 2,
+        finished = 1,
+    }
+end
 local ui_manager_stub = {
     shown = {},
     closed = {},
@@ -88,6 +96,14 @@ local function resetUi()
     ui_manager_stub.closed = {}
 end
 
+local function findButtonRow(buttons, text)
+    for index, row in ipairs(buttons) do
+        if row[1] and row[1].text == text then
+            return row, index
+        end
+    end
+end
+
 test("second dropdown treats same-count values as disabled and moves them last", function()
     local values = {
         { "Narrow", 2 },
@@ -151,11 +167,14 @@ test("show omits dimensions whose values are already selected", function()
     MetadataFacetDropdown.show(file_manager, {})
 
     local buttons = ui_manager_stub.shown[1].buttons
-    assertEqual(#buttons, 2)
-    assertEqual(buttons[1][1].text, "Series")
-    assertEqual(buttons[1][2].text, "1")
-    assertEqual(buttons[2][1].text, "Tags")
-    assertEqual(buttons[2][2].text, "1")
+    assertEqual(#buttons, 4)
+    assertEqual(buttons[1][1].text, "Book status")
+    assertEqual(buttons[1][2].text, "All")
+    assertEqual(#buttons[2], 0)
+    assertEqual(buttons[3][1].text, "Series")
+    assertEqual(buttons[3][2].text, "1")
+    assertEqual(buttons[4][1].text, "Tags")
+    assertEqual(buttons[4][2].text, "1")
 end)
 
 test("show counts available dimensions without sorting values", function()
@@ -186,13 +205,13 @@ test("show counts available dimensions without sorting values", function()
     end
 
     local buttons = ui_manager_stub.shown[1].buttons
-    assertEqual(#buttons, 3)
-    assertEqual(buttons[1][2].text, "2")
-    assertEqual(buttons[2][2].text, "2")
+    assertEqual(#buttons, 5)
     assertEqual(buttons[3][2].text, "2")
+    assertEqual(buttons[4][2].text, "2")
+    assertEqual(buttons[5][2].text, "2")
 end)
 
-test("show displays no filters row when every available value is selected", function()
+test("show displays no relevant filters row when every available value is selected", function()
     resetUi()
     local file_manager = {
         file_chooser = {
@@ -208,9 +227,96 @@ test("show displays no filters row when every available value is selected", func
     MetadataFacetDropdown.show(file_manager, {})
 
     local buttons = ui_manager_stub.shown[1].buttons
-    assertEqual(#buttons, 1)
-    assertEqual(buttons[1][1].text, "No filters")
-    assertEqual(buttons[1][1].enabled, false)
+    assertEqual(#buttons, 3)
+    assertEqual(buttons[3][1].text, "No relevant filters")
+    assertEqual(buttons[3][1].enabled, false)
+end)
+
+test("show opens filter values from leaf dropdown", function()
+    resetUi()
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.SERIES_SYMBOL, "Foo"),
+            refreshPath = function() end,
+        },
+    }
+    G_reader_settings = {
+        readSetting = function(_self, key)
+            if key == "plainui_tab_view_options" then
+                return {
+                    series = {
+                        filter = "reading",
+                        folder_sort = "book_count",
+                    },
+                }
+            end
+        end,
+        saveSetting = function() end,
+    }
+    metadata_source_stub.getMatchingMetadataValues = function()
+        return {}
+    end
+
+    local ok, err = pcall(function()
+        MetadataFacetDropdown.show(file_manager, {})
+        ui_manager_stub.shown[1].buttons[1][1].callback()
+    end)
+    G_reader_settings = saved_reader_settings
+    if not ok then
+        error(err)
+    end
+
+    local buttons = ui_manager_stub.shown[2].buttons
+    assertEqual(buttons[1][1].text, "Back")
+    local row = findButtonRow(buttons, "\u{25c9}")
+    assertEqual(row[2].text, "Reading")
+    assertEqual(row[3].text, "2")
+end)
+
+test("filter selection saves tab option and refreshes current leaf", function()
+    resetUi()
+    local saved_options = {}
+    local refreshed = 0
+    local file_manager = {
+        file_chooser = {
+            path = virtualPath(real_virtual_path.KEYWORD_SYMBOL, "award"),
+            refreshPath = function()
+                refreshed = refreshed + 1
+            end,
+        },
+    }
+    G_reader_settings = {
+        readSetting = function(_self, key)
+            if key == "plainui_tab_view_options" then
+                return saved_options
+            end
+        end,
+        saveSetting = function(_self, key, value)
+            if key == "plainui_tab_view_options" then
+                saved_options = value
+            end
+        end,
+    }
+    metadata_source_stub.getMatchingMetadataValues = function()
+        return {}
+    end
+
+    local ok, err = pcall(function()
+        MetadataFacetDropdown.show(file_manager, {})
+        ui_manager_stub.shown[1].buttons[1][1].callback()
+        findButtonRow(ui_manager_stub.shown[2].buttons, "\u{25ef}")[2].callback()
+    end)
+    G_reader_settings = saved_reader_settings
+    if not ok then
+        error(err)
+    end
+
+    assertEqual(saved_options.tags.filter, "unread")
+    assertEqual(refreshed, 1)
+    assertEqual(#ui_manager_stub.shown, 3)
+    assertEqual(ui_manager_stub.shown[3].buttons[2][1].text, "\u{25ef}")
+    assertEqual(ui_manager_stub.shown[3].buttons[3][1].text, "\u{25c9}")
+    assertEqual(ui_manager_stub.shown[3].buttons[3][2].text, "Unread")
 end)
 
 test("showValues sorts values, hides selected values, and disables non-narrowing rows", function()
