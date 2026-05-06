@@ -19,6 +19,8 @@ local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local StatusIndicators = require("modules.status_indicators")
+local TabOptionDialog = require("modules.tab_option_dialog")
+local TabOptionPresenter = require("modules.tab_option_presenter")
 local TabViewOptions = require("modules.tab_view_options")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -33,16 +35,6 @@ local DGENERIC_ICON_SIZE = G_defaults:readSetting("DGENERIC_ICON_SIZE")
 local AUTHOR_SYMBOL = VirtualPath.AUTHOR_SYMBOL
 local SERIES_SYMBOL = VirtualPath.SERIES_SYMBOL
 local TAG_SYMBOL = VirtualPath.KEYWORD_SYMBOL
-
-local FILTER_VALUES = {
-    books = { "legacy", "all", "unread", "reading", "finished" },
-    metadata = { "all", "unread", "reading", "finished" },
-}
-
-local SORT_VALUES = {
-    books = { "legacy", "recent", "title" },
-    metadata = { "name", "book_count" },
-}
 
 local function getMetadataLeafInfo(path)
     local base_dir, active_dimension, filter_state = VirtualPath.parse(path)
@@ -115,8 +107,6 @@ local BOOKS_SORT_COLLATE = {
 }
 local TAB_SELECTED_SUFFIX = " \u{25be}"
 local TAB_UNSELECTED_SUFFIX = "  "
-local OPTION_RADIO_SELECTED = "\u{25c9}"
-local OPTION_RADIO_UNSELECTED = "\u{25ef}"
 local OPTION_RADIO_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
 local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
 local tab_options_label_width
@@ -135,52 +125,11 @@ end
 local function getTabOptionsLabelWidth()
     if not tab_options_label_width then
         tab_options_label_width = math.max(
-            measureTextWidth(_("Book status"), "cfont", 20, false),
-            measureTextWidth(_("Sort by"), "cfont", 20, false)
+            measureTextWidth(TabOptionPresenter.getSummaryLabel("filter"), "cfont", 20, false),
+            measureTextWidth(TabOptionPresenter.getSummaryLabel("sort"), "cfont", 20, false)
         ) + 2 * Size.padding.large + Screen:scaleBySize(4)
     end
     return tab_options_label_width
-end
-
-local function getFilterLabel(value)
-    local labels = {
-        legacy = _("KOReader setting"),
-        all = _("All"),
-        unread = _("Unread"),
-        reading = _("Reading"),
-        finished = _("Finished"),
-    }
-    return labels[value] or labels.all
-end
-
-local function getSortLabel(value, tab_key)
-    local name_labels = {
-        authors = _("Author name"),
-        series = _("Series title"),
-        tags = _("Tag name"),
-    }
-    local labels = {
-        legacy = _("KOReader setting"),
-        recent = _("Recent"),
-        title = _("Title"),
-        name = name_labels[tab_key] or _("Name"),
-        book_count = _("Number of books"),
-    }
-    return labels[value] or labels.name
-end
-
-local function getTabFieldValues(tab_key, field)
-    if field == "filter" then
-        return FILTER_VALUES[tab_key == "books" and "books" or "metadata"]
-    end
-    return SORT_VALUES[tab_key == "books" and "books" or "metadata"]
-end
-
-local function getTabOptionField(tab_key, field)
-    if field == "filter" then
-        return "filter"
-    end
-    return tab_key == "books" and "sort" or "folder_sort"
 end
 
 local function getMetadataFilterCounts(file_manager, tab_key)
@@ -704,8 +653,16 @@ function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
         }
     end
     local buttons = {
-        makeSummaryRow(_("Book status"), getFilterLabel(options.filter), "filter"),
-        makeSummaryRow(_("Sort by"), getSortLabel(sort_value, tab_key), "sort"),
+        makeSummaryRow(
+            TabOptionPresenter.getSummaryLabel("filter"),
+            TabOptionPresenter.getFilterLabel(options.filter),
+            "filter"
+        ),
+        makeSummaryRow(
+            TabOptionPresenter.getSummaryLabel("sort"),
+            TabOptionPresenter.getSortLabel(sort_value, tab_key),
+            "sort"
+        ),
     }
     dialog = ButtonDialog:new{
         shrink_unneeded_width = true,
@@ -716,75 +673,36 @@ function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
 end
 
 function MetadataTabsTitleBar:showTabOptionValues(tab_key, field, anchor)
-    local option_field = getTabOptionField(tab_key, field)
+    local option_field = TabOptionPresenter.getOptionField(tab_key, field)
     local options = TabViewOptions.get(tab_key)
     local current_value = options[option_field]
     local filter_counts
     if field == "filter" then
         filter_counts = getMetadataFilterCounts(self.file_manager or FileManager.instance, tab_key)
     end
-    local dialog
-    local buttons = {
-        {{
-            text = _("Back"),
-            align = "left",
-            font_bold = true,
-            callback = function()
-                if dialog then
-                    UIManager:close(dialog)
-                end
-                self:showTabOptions(tab_key, anchor)
-            end,
-        }},
-    }
-
-    for _, value in ipairs(getTabFieldValues(tab_key, field)) do
-        local value_ref = value
-        local selected = value_ref == current_value
-        local function selectValue()
-            if dialog then
-                UIManager:close(dialog)
-            end
-            TabViewOptions.set(tab_key, option_field, value_ref)
-            self:refreshForTabOptionChange()
-            self:showTabOptionValues(tab_key, field, anchor)
-        end
-        local row = {
-            {
-                text = selected and OPTION_RADIO_SELECTED or OPTION_RADIO_UNSELECTED,
-                align = "center",
-                font_bold = false,
-                no_vertical_sep = true,
-                width = OPTION_RADIO_WIDTH,
-                callback = selectValue,
-            },
-            {
-                text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, tab_key),
-                align = "left",
-                font_bold = false,
-                no_vertical_sep = true,
-                callback = selectValue,
-            },
-        }
-        local count = filter_counts and filter_counts[value_ref]
-        if count ~= nil then
-            table.insert(row, {
-                text = tostring(count),
-                align = "left",
-                font_bold = false,
-                width = OPTION_COUNT_WIDTH,
-                callback = selectValue,
-            })
-        end
-        table.insert(buttons, row)
-    end
-
-    dialog = ButtonDialog:new{
-        shrink_unneeded_width = true,
-        buttons = buttons,
+    TabOptionDialog.showValues{
         anchor = anchor,
+        values = TabOptionPresenter.getFieldValues(tab_key, field),
+        current_value = current_value,
+        radio_width = OPTION_RADIO_WIDTH,
+        count_width = OPTION_COUNT_WIDTH,
+        getLabel = function(value)
+            return TabOptionPresenter.getValueLabel(tab_key, field, value)
+        end,
+        getCount = filter_counts and function(value)
+            return filter_counts[value]
+        end or nil,
+        onBack = function()
+            self:showTabOptions(tab_key, anchor)
+        end,
+        onSelect = function(value)
+            TabViewOptions.set(tab_key, option_field, value)
+            self:refreshForTabOptionChange()
+        end,
+        onSelected = function()
+            self:showTabOptionValues(tab_key, field, anchor)
+        end,
     }
-    UIManager:show(dialog)
 end
 
 function MetadataTabsTitleBar:updateStatusIndicators(refresh)

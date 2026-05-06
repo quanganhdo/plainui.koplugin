@@ -7,6 +7,8 @@ local FileManager = require("apps/filemanager/filemanager")
 local FontOk, Font = pcall(require, "ui/font")
 local MetadataSource = require("modules.metadata_source")
 local Size = require("ui/size")
+local TabOptionDialog = require("modules.tab_option_dialog")
+local TabOptionPresenter = require("modules.tab_option_presenter")
 local TabViewOptions = require("modules.tab_view_options")
 local TextWidgetOk, TextWidget = pcall(require, "ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
@@ -17,11 +19,6 @@ local MetadataFacetDropdown = {}
 local ROW_FONT_FACE = "cfont"
 local ROW_FONT_SIZE = 20
 local VALUE_LABEL_MAX_CHARS = 32
-local OPTION_RADIO_SELECTED = "\u{25c9}"
-local OPTION_RADIO_UNSELECTED = "\u{25ef}"
-
-local FILTER_VALUES = { "all", "unread", "reading", "finished" }
-local SORT_VALUES = { "name", "book_count" }
 
 local DIMENSIONS = {
     {
@@ -73,8 +70,8 @@ end
 local function getRowRadioWidth()
     if not row_radio_width then
         row_radio_width = math.max(
-            measureTextWidth(OPTION_RADIO_SELECTED, false),
-            measureTextWidth(OPTION_RADIO_UNSELECTED, false)
+            measureTextWidth(TabOptionDialog.OPTION_RADIO_SELECTED, false),
+            measureTextWidth(TabOptionDialog.OPTION_RADIO_UNSELECTED, false)
         ) + 2 * Size.padding.large + Size.padding.default
     end
     return row_radio_width
@@ -126,37 +123,6 @@ local function getDropdownState(file_manager)
         tab_key = tab_key,
         tab_options = TabViewOptions.getMetadataOptions(tab_key),
     }
-end
-
-local function getFilterLabel(value)
-    local labels = {
-        all = _("All"),
-        unread = _("Unread"),
-        reading = _("Reading"),
-        finished = _("Finished"),
-    }
-    return labels[value] or labels.all
-end
-
-local function getSortLabel(value, tab_key)
-    local name_labels = {
-        authors = _("Author name"),
-        series = _("Series title"),
-        tags = _("Tag name"),
-    }
-    local labels = {
-        name = name_labels[tab_key] or _("Name"),
-        book_count = _("Number of books"),
-    }
-    return labels[value] or labels.name
-end
-
-local function getTabFieldValues(field)
-    return field == "filter" and FILTER_VALUES or SORT_VALUES
-end
-
-local function getTabOptionField(field)
-    return field == "filter" and "filter" or "folder_sort"
 end
 
 local function countAvailableValues(values)
@@ -305,92 +271,49 @@ local function showTabOptionValues(file_manager, anchor, field)
         return
     end
 
-    local option_field = getTabOptionField(field)
+    local option_field = TabOptionPresenter.getOptionField(state.tab_key, field)
     local current_value = state.tab_options[option_field]
     local filter_counts
     local count_width
     if field == "filter" then
         filter_counts = getMetadataFilterCounts(state)
         local max_count = 0
-        for _, value in ipairs(getTabFieldValues(field)) do
+        for _, value in ipairs(TabOptionPresenter.getFieldValues(state.tab_key, field)) do
             max_count = math.max(max_count, filter_counts[value] or 0)
         end
         count_width = getRowCountWidth(max_count)
     end
 
-    local dialog
-    local buttons = {
-        {{
-            text = _("Back"),
-            align = "left",
+    TabOptionDialog.showValues{
+        anchor = anchor,
+        values = TabOptionPresenter.getFieldValues(state.tab_key, field),
+        current_value = current_value,
+        radio_width = getRowRadioWidth(),
+        getLabel = function(value)
+            return TabOptionPresenter.getValueLabel(state.tab_key, field, value)
+        end,
+        getCount = filter_counts and function(value)
+            return filter_counts[value]
+        end or nil,
+        getCountWidth = function(_value, count)
+            return count_width or getRowCountWidth(count)
+        end,
+        style = {
             font_face = ROW_FONT_FACE,
             font_size = ROW_FONT_SIZE,
-            font_bold = true,
-            callback = function()
-                if dialog then
-                    UIManager:close(dialog)
-                end
-                showDimensionDropdown(file_manager, anchor)
-            end,
-        }},
-    }
-
-    for _, value in ipairs(getTabFieldValues(field)) do
-        local value_ref = value
-        local selected = value_ref == current_value
-        local function selectValue()
-            if dialog then
-                UIManager:close(dialog)
-            end
-            TabViewOptions.set(state.tab_key, option_field, value_ref)
+            avoid_text_truncation = false,
+        },
+        onBack = function()
+            showDimensionDropdown(file_manager, anchor)
+        end,
+        onSelect = function(value)
+            TabViewOptions.set(state.tab_key, option_field, value)
             refreshAfterOptionChange(state)
+        end,
+        onSelected = function()
             showTabOptionValues(file_manager, anchor, field)
-        end
-        local row = {
-            {
-                text = selected and OPTION_RADIO_SELECTED or OPTION_RADIO_UNSELECTED,
-                align = "center",
-                font_face = ROW_FONT_FACE,
-                font_size = ROW_FONT_SIZE,
-                font_bold = false,
-                no_vertical_sep = true,
-                width = getRowRadioWidth(),
-                avoid_text_truncation = false,
-                callback = selectValue,
-            },
-            {
-                text = field == "filter" and getFilterLabel(value_ref) or getSortLabel(value_ref, state.tab_key),
-                align = "left",
-                font_face = ROW_FONT_FACE,
-                font_size = ROW_FONT_SIZE,
-                font_bold = false,
-                no_vertical_sep = true,
-                avoid_text_truncation = false,
-                callback = selectValue,
-            },
-        }
-        local count = filter_counts and filter_counts[value_ref]
-        if count ~= nil then
-            table.insert(row, {
-                text = tostring(count),
-                align = "left",
-                font_face = ROW_FONT_FACE,
-                font_size = ROW_FONT_SIZE,
-                font_bold = false,
-                width = count_width or getRowCountWidth(count),
-                avoid_text_truncation = false,
-                callback = selectValue,
-            })
-        end
-        table.insert(buttons, row)
-    end
-
-    dialog = ButtonDialog:new{
-        shrink_unneeded_width = true,
-        buttons = buttons,
-        anchor = anchor,
+        end,
     }
-    UIManager:show(dialog)
 end
 
 showDimensionDropdown = function(file_manager, anchor)
@@ -408,8 +331,8 @@ showDimensionDropdown = function(file_manager, anchor)
         showTabOptionValues(file_manager, anchor, field)
     end
     table.insert(buttons, makeSummaryRow(
-        _("Book status"),
-        getFilterLabel(state.tab_options.filter),
+        TabOptionPresenter.getSummaryLabel("filter"),
+        TabOptionPresenter.getFilterLabel(state.tab_options.filter),
         function()
             showOptionValues("filter")
         end
