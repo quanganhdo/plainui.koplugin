@@ -43,6 +43,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
             padding_bottom = padding_bottom,
             border = border,
             text_y_offset = border + padding_top,
+            skip_top_edge = true,
         }
         percentage_badge_cache[text] = badge
         return badge
@@ -78,7 +79,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
         else
             badge_x = target.dimen.x + target.dimen.w - badge_size.w - Screen:scaleBySize(5)
         end
-        local badge_y = target.dimen.y
+        local badge_y = target.dimen.y - (target.bordersize or 0)
         CoverBadge.paint(bb, badge_x, badge_y, badge)
     end
 end)

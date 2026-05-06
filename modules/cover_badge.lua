@@ -85,6 +85,7 @@ function CoverBadge.newTextBadge(opts)
         border = border,
         radius = opts.radius,
         text_y_offset = opts.text_y_offset,
+        skip_top_edge = opts.skip_top_edge,
     }
     function badge:getSize()
         return Geom:new{ w = self.width, h = self.height }
@@ -93,13 +94,23 @@ function CoverBadge.newTextBadge(opts)
 end
 
 function CoverBadge.paint(bb, x, y, badge)
-    lightenRoundedRect(bb, x, y, badge.width, badge.height, badge.radius)
+    local edge_offset = badge.skip_top_edge and (badge.border or 0) or 0
+    lightenRoundedRect(bb, x, y + edge_offset, badge.width, badge.height - edge_offset, badge.radius)
     if badge.border and badge.border > 0 then
-        bb:paintBorder(
-            x, y, badge.width, badge.height, badge.border,
-            Blitbuffer.COLOR_BLACK, badge.radius,
-            G_reader_settings:nilOrTrue("anti_alias_ui")
-        )
+        if badge.skip_top_edge then
+            local border = badge.border
+            local border_y = y + border
+            local border_h = badge.height - border
+            bb:paintRect(x, border_y, border, border_h, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(x + badge.width - border, border_y, border, border_h, Blitbuffer.COLOR_BLACK)
+            bb:paintRect(x, y + badge.height - border, badge.width, border, Blitbuffer.COLOR_BLACK)
+        else
+            bb:paintBorder(
+                x, y, badge.width, badge.height, badge.border,
+                Blitbuffer.COLOR_BLACK, badge.radius,
+                G_reader_settings:nilOrTrue("anti_alias_ui")
+            )
+        end
     end
     local text_x = x + math.floor((badge.width - badge.text_size.w) / 2)
     local text_y = badge.text_y_offset

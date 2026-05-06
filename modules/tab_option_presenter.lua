@@ -52,7 +52,7 @@ function TabOptionPresenter.getSortLabel(value, tab_key)
     }
     local labels = {
         legacy = _("KOReader setting"),
-        recent = _("Recent"),
+        recent = _("Last read"),
         title = _("Title"),
         progress = _("Progress"),
         name = name_labels[tab_key] or _("Name"),
