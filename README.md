@@ -7,13 +7,14 @@ It adds a Books, Series, Authors, and Tags tab bar, compact device status contro
 ## Features
 
 - Use Series, Authors, and Tags views with Mosaic and Detailed list display modes.
+- Filter each tab by reading status and choose its sort order.
 - Use multiple filters to find exactly what book to read next.
 - Quick access from the home screen to dark mode, frontlight, and Wi-Fi.
 - Long-press the frontlight icon to toggle the frontlight.
 - Long-press the Wi-Fi icon to choose a network.
 - Long-press the battery icon to view battery information.
 
-Plain UI is meant to get you back to reading quickly. There are no customization options, and the feature set is deliberately small.
+Plain UI is meant to get you back to reading quickly so the feature set is deliberately small.
 
 ## Installation
 
@@ -22,6 +23,18 @@ Copy `plainui.koplugin` into the `plugins` folder in your KOReader installation.
 Plain UI depends on KOReader's CoverBrowser plugin. Make sure CoverBrowser is installed and enabled.
 
 KOReader's Battery statistics plugin is optional. If it is enabled, long-pressing the battery icon opens the battery statistics screen.
+
+## Accessibility
+
+Cover badge text uses a default font size of `13`. If the badge text is too small to read comfortably, add `plainui_badge_font_size` to KOReader's `settings.reader.lua`:
+
+```lua
+return {
+    ["plainui_badge_font_size"] = 15,
+}
+```
+
+Restart KOReader after changing the setting.
 
 ## Credits
 

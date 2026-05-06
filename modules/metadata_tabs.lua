@@ -3,6 +3,7 @@
 
 local userpatch = require("userpatch")
 local Button = require("ui/widget/button")
+local ButtonDialog = require("ui/widget/buttondialog")
 local Device = require("device")
 local Event = require("ui/event")
 local FileManager = require("apps/filemanager/filemanager")
@@ -18,6 +19,9 @@ local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local StatusIndicators = require("modules.status_indicators")
+local TabOptionDialog = require("modules.tab_option_dialog")
+local TabOptionPresenter = require("modules.tab_option_presenter")
+local TabViewOptions = require("modules.tab_view_options")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -91,6 +95,116 @@ local function getSelectedTabKey(file_manager)
     return "books"
 end
 
+local BOOKS_FILTER_STATUS = {
+    unread = "new",
+    reading = "reading",
+    finished = "complete",
+}
+
+local BOOKS_SORT_COLLATE = {
+    recent = "access",
+    title = "title",
+    progress = "percent_natural",
+}
+local TAB_SELECTED_SUFFIX = " \u{25be}"
+local TAB_UNSELECTED_SUFFIX = "  "
+local CHECKBOX_CHECKED = "\u{2611}"
+local CHECKBOX_UNCHECKED = "\u{2610}"
+local OPTION_RADIO_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
+local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
+local CHECKBOX_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
+local tab_options_label_width
+
+local function measureTextWidth(text, font_face, font_size, bold)
+    local widget = TextWidget:new{
+        text = text,
+        face = Font:getFace(font_face, font_size),
+        bold = bold or false,
+    }
+    local width = widget:getSize().w
+    widget:free()
+    return width
+end
+
+local function getTabOptionsLabelWidth()
+    if not tab_options_label_width then
+        tab_options_label_width = math.max(
+            measureTextWidth(TabOptionPresenter.getSummaryLabel("filter"), "cfont", 20, false),
+            measureTextWidth(TabOptionPresenter.getSummaryLabel("sort"), "cfont", 20, false)
+        ) + 2 * Size.padding.large + Screen:scaleBySize(4)
+    end
+    return tab_options_label_width
+end
+
+local function getMetadataFilterCounts(file_manager, tab_key)
+    if not TabViewOptions.isMetadataTab(tab_key) then
+        return
+    end
+
+    local file_chooser = file_manager and file_manager.file_chooser
+    local path = file_chooser and file_chooser.path
+    if VirtualPath.getTabKey(path) ~= tab_key then
+        return
+    end
+
+    local base_dir, _active_dimension, filter_state = VirtualPath.parse(path)
+    if not base_dir then
+        return
+    end
+
+    local MetadataSource = require("modules.metadata_source")
+    local BookInfoManager = require("bookinfomanager")
+    return MetadataSource.getStatusFilterCounts(
+        BookInfoManager,
+        base_dir,
+        filter_state,
+        TabViewOptions.getMetadataOptions(tab_key)
+    )
+end
+
+local function isVirtualPath(path)
+    return VirtualPath.findRoot(path) ~= nil
+end
+
+local function isFileManagerBooksChooser(file_chooser)
+    if not file_chooser
+            or file_chooser.name ~= "filemanager"
+            or isVirtualPath(file_chooser.path) then
+        return false
+    end
+
+    local file_manager = FileManager.instance
+    return not file_manager
+        or file_chooser.ui == file_manager
+        or file_manager.file_chooser == file_chooser
+end
+
+local function showFileWithBooksOptions(file_chooser, filename, fullpath)
+    for _, pattern in ipairs(file_chooser.exclude_files) do
+        if filename:match(pattern) then
+            return false
+        end
+    end
+    if not file_chooser.show_unsupported
+            and file_chooser.file_filter ~= nil
+            and not file_chooser.file_filter(filename) then
+        return false
+    end
+
+    local filter = TabViewOptions.get("books").filter
+    if filter == "all" then
+        return true
+    end
+
+    local status = BOOKS_FILTER_STATUS[filter]
+    if not status or not fullpath then
+        return true
+    end
+
+    local BookList = require("ui/widget/booklist")
+    return BookList.getBookStatus(fullpath) == status
+end
+
 local function getBackTitleBarInfo(file_manager)
     local path = file_manager and file_manager.file_chooser and file_manager.file_chooser.path
     local leaf_info = getMetadataLeafInfo(path)
@@ -138,7 +252,7 @@ function MetadataTabsTitleBar:init()
     self.width = Screen:getWidth()
     self.icon_size = Screen:scaleBySize(DGENERIC_ICON_SIZE)
     self.button_padding = Screen:scaleBySize(5)
-    self.tab_padding_h = Screen:scaleBySize(10)
+    self.tab_padding_h = Screen:scaleBySize(7)
     self.tab_padding_v = Screen:scaleBySize(5)
     self.tab_font_face = "smallinfofont"
     self.tab_font_size = 18
@@ -148,21 +262,25 @@ function MetadataTabsTitleBar:init()
 
     self.file_manager = self.file_manager or FileManager.instance
     local file_manager = self.file_manager
-    local function getTabWidth(text)
+    local function getTextWidth(text, bold)
         local face = Font:getFace(self.tab_font_face, self.tab_font_size)
-        local normal_widget = TextWidget:new{
+        local widget = TextWidget:new{
             text = text,
             face = face,
-            bold = false,
+            bold = bold or false,
         }
-        local bold_widget = TextWidget:new{
-            text = text,
-            face = face,
-            bold = true,
-        }
-        local width = math.max(normal_widget:getSize().w, bold_widget:getSize().w) + 2 * self.tab_padding_h
-        normal_widget:free()
-        bold_widget:free()
+        local width = widget:getSize().w
+        widget:free()
+        return width
+    end
+    local function getTabWidth(text)
+        local selected_text = text .. TAB_SELECTED_SUFFIX
+        local unselected_text = text .. TAB_UNSELECTED_SUFFIX
+        local width = math.max(
+            getTextWidth(unselected_text, false),
+            getTextWidth(unselected_text, true),
+            getTextWidth(selected_text, true)
+        ) + 2 * self.tab_padding_h
         return width
     end
     local function makeTab(key, text, callback, hold_callback)
@@ -176,7 +294,13 @@ function MetadataTabsTitleBar:init()
             bordersize = 0,
             padding_h = self.tab_padding_h,
             padding_v = self.tab_padding_v,
-            callback = callback,
+            callback = function()
+                if self.selected_tab_key == key then
+                    self:showTabOptions(key)
+                else
+                    callback()
+                end
+            end,
             hold_callback = hold_callback,
             show_parent = self.show_parent,
         }
@@ -185,6 +309,7 @@ function MetadataTabsTitleBar:init()
             button,
         }
         tab.key = key
+        tab.text = text
         tab.button = button
         return tab
     end
@@ -207,6 +332,12 @@ function MetadataTabsTitleBar:init()
     self.series_button = self.series_tab.button
     self.authors_button = self.authors_tab.button
     self.tags_button = self.tags_tab.button
+    self.tabs_by_key = {
+        books = self.books_tab,
+        series = self.series_tab,
+        authors = self.authors_tab,
+        tags = self.tags_tab,
+    }
     self.tab_label_height = self.books_button.label_container.dimen.h
     self.back_chevron_hit_width = self.tab_label_height + self.tab_padding_h
     self.tabs_group = HorizontalGroup:new{
@@ -474,6 +605,137 @@ function MetadataTabsTitleBar:getDropdownAnchor()
     return button and button[1] and button[1].dimen or button and button.dimen, true
 end
 
+function MetadataTabsTitleBar:getTabDropdownAnchor(tab_key)
+    local tab = self.tabs_by_key and self.tabs_by_key[tab_key]
+    local button = tab and tab.button
+    return button and button[1] and button[1].dimen or button and button.dimen, true
+end
+
+function MetadataTabsTitleBar:refreshForTabOptionChange()
+    local file_manager = self.file_manager or FileManager.instance
+    local file_chooser = file_manager and file_manager.file_chooser
+    if file_chooser then
+        file_chooser:refreshPath()
+    else
+        UIManager:setDirty(self.show_parent, "ui", self.dimen)
+    end
+end
+
+function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
+    anchor = anchor or function()
+        return self:getTabDropdownAnchor(tab_key)
+    end
+    local options = TabViewOptions.get(tab_key)
+    local sort_value = tab_key == "books" and options.sort or options.folder_sort
+    local dialog
+    local function showValues(field)
+        if dialog then
+            UIManager:close(dialog)
+        end
+        self:showTabOptionValues(tab_key, field, anchor)
+    end
+    local function makeSummaryRow(label, value, field)
+        return {
+            {
+                text = label,
+                align = "left",
+                font_bold = false,
+                no_vertical_sep = true,
+                width = getTabOptionsLabelWidth(),
+                callback = function()
+                    showValues(field)
+                end,
+            },
+            {
+                text = value,
+                align = "left",
+                font_bold = true,
+                callback = function()
+                    showValues(field)
+                end,
+            },
+        }
+    end
+    local buttons = {
+        makeSummaryRow(
+            TabOptionPresenter.getSummaryLabel("filter"),
+            TabOptionPresenter.getFilterLabel(options.filter),
+            "filter"
+        ),
+        makeSummaryRow(
+            TabOptionPresenter.getSummaryLabel("sort"),
+            TabOptionPresenter.getSortLabel(sort_value, tab_key),
+            "sort"
+        ),
+    }
+    if tab_key == "books" and options.filter ~= "legacy" then
+        local function toggleExcludeFolders()
+            if dialog then
+                UIManager:close(dialog)
+            end
+            TabViewOptions.set("books", "exclude_folders", not TabViewOptions.get("books").exclude_folders)
+            self:refreshForTabOptionChange()
+            self:showTabOptions(tab_key, anchor)
+        end
+        table.insert(buttons, {})
+        table.insert(buttons, {
+            {
+                text = TabViewOptions.get("books").exclude_folders and CHECKBOX_CHECKED or CHECKBOX_UNCHECKED,
+                align = "center",
+                font_bold = false,
+                no_vertical_sep = true,
+                width = CHECKBOX_WIDTH,
+                callback = toggleExcludeFolders,
+            },
+            {
+                text = _("Exclude folders"),
+                align = "left",
+                font_bold = false,
+                callback = toggleExcludeFolders,
+            },
+        })
+    end
+    dialog = ButtonDialog:new{
+        shrink_unneeded_width = true,
+        buttons = buttons,
+        anchor = anchor,
+    }
+    UIManager:show(dialog)
+end
+
+function MetadataTabsTitleBar:showTabOptionValues(tab_key, field, anchor)
+    local option_field = TabOptionPresenter.getOptionField(tab_key, field)
+    local options = TabViewOptions.get(tab_key)
+    local current_value = options[option_field]
+    local filter_counts
+    if field == "filter" then
+        filter_counts = getMetadataFilterCounts(self.file_manager or FileManager.instance, tab_key)
+    end
+    TabOptionDialog.showValues{
+        anchor = anchor,
+        values = TabOptionPresenter.getFieldValues(tab_key, field),
+        current_value = current_value,
+        radio_width = OPTION_RADIO_WIDTH,
+        count_width = OPTION_COUNT_WIDTH,
+        getLabel = function(value)
+            return TabOptionPresenter.getValueLabel(tab_key, field, value)
+        end,
+        getCount = filter_counts and function(value)
+            return filter_counts[value]
+        end or nil,
+        onBack = function()
+            self:showTabOptions(tab_key, anchor)
+        end,
+        onSelect = function(value)
+            TabViewOptions.set(tab_key, option_field, value)
+            self:refreshForTabOptionChange()
+        end,
+        onSelected = function()
+            self:showTabOptionValues(tab_key, field, anchor)
+        end,
+    }
+end
+
 function MetadataTabsTitleBar:updateStatusIndicators(refresh)
     if not self.battery_button then
         return
@@ -505,11 +767,15 @@ function MetadataTabsTitleBar:refreshStatusIndicators()
 end
 
 function MetadataTabsTitleBar:setTabSelected(tab, selected)
+    local text = tab.text .. (selected and TAB_SELECTED_SUFFIX or TAB_UNSELECTED_SUFFIX)
     if tab.button.text_font_bold ~= selected then
         tab.button.text_font_bold = selected
+        tab.button.text = text
         tab.button.label_widget:free()
         tab.button:init()
+        return
     end
+    tab.button:setText(text, tab.button.width)
 end
 
 function MetadataTabsTitleBar:updateSelectedTab(refresh)
@@ -580,6 +846,58 @@ function MetadataTabsTitleBar:onFrontlightStateChanged()
     self:refreshStatusIndicators()
     UIManager:scheduleIn(0.2, self.refreshStatusIndicators, self)
     UIManager:scheduleIn(1, self.refreshStatusIndicators, self)
+end
+
+local FileChooser_show_file = FileChooser.show_file
+FileChooser.show_file = function(self, filename, fullpath)
+    if not isFileManagerBooksChooser(self) then
+        return FileChooser_show_file(self, filename, fullpath)
+    end
+
+    local books_options = TabViewOptions.get("books")
+    if books_options.filter == "legacy" then
+        return FileChooser_show_file(self, filename, fullpath)
+    end
+    return showFileWithBooksOptions(self, filename, fullpath)
+end
+
+local FileChooser_show_dir = FileChooser.show_dir
+FileChooser.show_dir = function(self, dirname)
+    local books_options = TabViewOptions.get("books")
+    if isFileManagerBooksChooser(self)
+            and books_options.filter ~= "legacy"
+            and books_options.exclude_folders then
+        return false
+    end
+    return FileChooser_show_dir(self, dirname)
+end
+
+local FileChooser_getCollate = FileChooser.getCollate
+FileChooser.getCollate = function(self)
+    if isFileManagerBooksChooser(self) then
+        local books_options = TabViewOptions.get("books")
+        if books_options.sort == "legacy" then
+            return FileChooser_getCollate(self)
+        end
+
+        local collate_id = BOOKS_SORT_COLLATE[books_options.sort]
+        local collate = collate_id and self.collates[collate_id]
+        if collate then
+            return collate, collate_id
+        end
+    end
+    return FileChooser_getCollate(self)
+end
+
+local FileChooser_getSortingFunction = FileChooser.getSortingFunction
+FileChooser.getSortingFunction = function(self, collate, reverse_collate)
+    if isFileManagerBooksChooser(self) then
+        local books_options = TabViewOptions.get("books")
+        if books_options.sort ~= "legacy" then
+            reverse_collate = false
+        end
+    end
+    return FileChooser_getSortingFunction(self, collate, reverse_collate)
 end
 
 function MetadataTabsTitleBar:generateHorizontalLayout()

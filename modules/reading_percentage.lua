@@ -13,7 +13,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
     local Screen = Device.screen
 
     local percentage_badge_cache = {}
-    local percentage_face = Font:getFace("infont", 13)
+    local percentage_face = Font:getFace(CoverBadge.FONT_FACE, CoverBadge.getFontSize())
 
     local function getReadingPercentageText(percent_finished)
         local percent = math.floor((percent_finished or 0) * 100 + 0.5)
@@ -43,6 +43,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
             padding_bottom = padding_bottom,
             border = border,
             text_y_offset = border + padding_top,
+            skip_top_edge = true,
         }
         percentage_badge_cache[text] = badge
         return badge
@@ -78,7 +79,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function()
         else
             badge_x = target.dimen.x + target.dimen.w - badge_size.w - Screen:scaleBySize(5)
         end
-        local badge_y = target.dimen.y
+        local badge_y = target.dimen.y - (target.bordersize or 0)
         CoverBadge.paint(bb, badge_x, badge_y, badge)
     end
 end)

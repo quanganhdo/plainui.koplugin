@@ -15,7 +15,7 @@ userpatch.registerPatchPluginFunc("coverbrowser", function(CoverBrowser)
     local Screen = Device.screen
 
     local complete_badge
-    local complete_face = Font:getFace("infont", 13)
+    local complete_face = Font:getFace(CoverBadge.FONT_FACE, CoverBadge.getFontSize())
 
     local function getCompleteBadge()
         if complete_badge then
