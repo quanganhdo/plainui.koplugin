@@ -108,8 +108,11 @@ local BOOKS_SORT_COLLATE = {
 }
 local TAB_SELECTED_SUFFIX = " \u{25be}"
 local TAB_UNSELECTED_SUFFIX = "  "
+local CHECKBOX_CHECKED = "\u{2611}"
+local CHECKBOX_UNCHECKED = "\u{2610}"
 local OPTION_RADIO_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
 local OPTION_COUNT_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(48)
+local CHECKBOX_WIDTH = 2 * Size.padding.large + Screen:scaleBySize(22)
 local tab_options_label_width
 
 local function measureTextWidth(text, font_face, font_size, bold)
@@ -665,6 +668,33 @@ function MetadataTabsTitleBar:showTabOptions(tab_key, anchor)
             "sort"
         ),
     }
+    if tab_key == "books" and options.filter ~= "legacy" then
+        local function toggleExcludeFolders()
+            if dialog then
+                UIManager:close(dialog)
+            end
+            TabViewOptions.set("books", "exclude_folders", not TabViewOptions.get("books").exclude_folders)
+            self:refreshForTabOptionChange()
+            self:showTabOptions(tab_key, anchor)
+        end
+        table.insert(buttons, {})
+        table.insert(buttons, {
+            {
+                text = TabViewOptions.get("books").exclude_folders and CHECKBOX_CHECKED or CHECKBOX_UNCHECKED,
+                align = "center",
+                font_bold = false,
+                no_vertical_sep = true,
+                width = CHECKBOX_WIDTH,
+                callback = toggleExcludeFolders,
+            },
+            {
+                text = _("Exclude folders"),
+                align = "left",
+                font_bold = false,
+                callback = toggleExcludeFolders,
+            },
+        })
+    end
     dialog = ButtonDialog:new{
         shrink_unneeded_width = true,
         buttons = buttons,
@@ -829,6 +859,17 @@ FileChooser.show_file = function(self, filename, fullpath)
         return FileChooser_show_file(self, filename, fullpath)
     end
     return showFileWithBooksOptions(self, filename, fullpath)
+end
+
+local FileChooser_show_dir = FileChooser.show_dir
+FileChooser.show_dir = function(self, dirname)
+    local books_options = TabViewOptions.get("books")
+    if isFileManagerBooksChooser(self)
+            and books_options.filter ~= "legacy"
+            and books_options.exclude_folders then
+        return false
+    end
+    return FileChooser_show_dir(self, dirname)
 end
 
 local FileChooser_getCollate = FileChooser.getCollate

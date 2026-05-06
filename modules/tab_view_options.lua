@@ -9,6 +9,7 @@ local DEFAULTS = {
     books = {
         filter = "legacy",
         sort = "legacy",
+        exclude_folders = false,
     },
     authors = {
         filter = "all",
@@ -106,6 +107,7 @@ local function normalizeBooksOptions(options)
     return {
         filter = VALID.books.filter[options.filter] and options.filter or defaults.filter,
         sort = VALID.books.sort[options.sort] and options.sort or defaults.sort,
+        exclude_folders = options.exclude_folders == true,
     }
 end
 
@@ -149,6 +151,8 @@ function TabViewOptions.set(tab_key, field, value)
             current.books.filter = value
         elseif field == "sort" and VALID.books.sort[value] then
             current.books.sort = value
+        elseif field == "exclude_folders" then
+            current.books.exclude_folders = value == true
         else
             return false
         end
