@@ -1,6 +1,6 @@
 # Plain UI
 
-Plain UI is a minimal home screen for KOReader focused on quick access to your library.
+Plain UI is a minimal library and reading interface for KOReader focused on quick access to your books and common reading controls.
 
 It adds a Books, Series, Authors, and Tags tab bar, compact device status controls, and a few cover-grid annotations.
 
@@ -13,6 +13,8 @@ It adds a Books, Series, Authors, and Tags tab bar, compact device status contro
 - Long-press the frontlight icon to toggle the frontlight.
 - Long-press the Wi-Fi icon to choose a network.
 - Long-press the battery icon to view battery information.
+- Swipe down while reading to open a compact toolbar with typography, reading statistics, table of contents, and search actions.
+- Adjust font, spacing, margins, and alignment from a compact typography panel.
 
 Plain UI is meant to get you back to reading quickly so the feature set is deliberately small.
 
@@ -36,11 +38,23 @@ return {
 
 Restart KOReader after changing the setting.
 
+The Plain UI reader toolbar is enabled by default. To keep the library interface but use KOReader's standard reading menu, add `plainui_reader_enabled` to `settings.reader.lua`:
+
+```lua
+return {
+    ["plainui_reader_enabled"] = false,
+}
+```
+
+Restart KOReader after changing the setting.
+
 ## Credits
 
 Please visit [plainui.koplugin](https://github.com/quanganhdo/plainui.koplugin) for the latest updates.
 
 Plain UI takes inspiration from [SimpleUI](https://github.com/doctorhetfield-cmd/simpleui.koplugin) and [Project: Title](https://github.com/joshuacant/ProjectTitle).
+
+The reader toolbar takes inspiration from the reading menu in Kobo Nickel. Action icons are adapted from [Tabler Icons v3.46.0](https://github.com/tabler/tabler-icons), copyright (c) 2020-2026 Paweł Kuna, under the MIT License included with the icons.
 
 The metadata browser includes code adapted from [medinauta's BrowseByMetadata user patch](https://github.com/medinauta/Koreader-Patches/blob/main/2-BrowseByMetadata.lua), which was inspired by [poire-z's BrowseByMetadata proof of concept](https://github.com/koreader/koreader/issues/8472).
 
