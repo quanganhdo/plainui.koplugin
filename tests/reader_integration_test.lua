@@ -356,6 +356,114 @@ test("reader controller installs one swipe hook and restores it safely", functio
     package.loaded["modules.reader.controller"] = nil
 end)
 
+test("reader controller enforces session-only reader chrome", function()
+    local handled_event
+    local applied_mode
+    local progress_style
+    local refreshed
+    local rescheduled = false
+    local toc_markers_updated = false
+    local original_settings = {
+        all_at_once = false,
+        battery = true,
+        book_chapter = false,
+        chapter_time_to_read = false,
+        disable_progress_bar = true,
+        disabled = false,
+        lock_tap = true,
+        order = { [0] = "off", [1] = "battery" },
+        progress_bar_position = "alongside",
+        progress_style_thin = false,
+        progress_style_thin_height = 3,
+        time = true,
+    }
+    local footer = {
+        settings = original_settings,
+        progress_bar = {
+            updateStyle = function(_, thick, height)
+                progress_style = { thick = thick, height = height }
+            end,
+        },
+        set_mode_index = function(self)
+            self.mode_list = { off = 0, page_progress = 1 }
+        end,
+        set_has_no_mode = function(self) self.has_no_mode = false end,
+        updateFooterTextGenerator = function() end,
+        applyFooterMode = function(_, mode) applied_mode = mode end,
+        setTocMarkers = function() toc_markers_updated = true end,
+        refreshFooter = function(_, refresh, signal)
+            refreshed = { refresh = refresh, signal = signal }
+        end,
+        rescheduleFooterAutoRefreshIfNeeded = function() rescheduled = true end,
+    }
+    local global_saves = 0
+    local document_saves = 0
+    local saved_reader_settings = G_reader_settings
+    G_reader_settings = {
+        saveSetting = function() global_saves = global_saves + 1 end,
+    }
+
+    withModules({
+        ["ui/event"] = {
+            new = function(_, name, value) return { name = name, value = value } end,
+        },
+        ["logger"] = { info = function() end, warn = function() end },
+        ["ui/uimanager"] = {},
+    }, function()
+        package.loaded["modules.reader.controller"] = nil
+        local Controller = require("modules.reader.controller")
+        local ui = {
+            document = { configurable = { status_line = 0 } },
+            doc_settings = {
+                saveSetting = function() document_saves = document_saves + 1 end,
+            },
+            handleEvent = function(_, event) handled_event = event end,
+            view = { footer = footer },
+        }
+        local controller = Controller.new({ path = "/plugin" }, ui)
+        assertEqual(controller:enforceReaderChrome(), true)
+
+        assertEqual(handled_event.name, "SetStatusLine")
+        assertEqual(handled_event.value, 1)
+        assertEqual(ui.document.configurable.status_line, 0)
+        assertEqual(global_saves, 0)
+        assertEqual(document_saves, 0)
+
+        assertTruthy(footer.settings ~= original_settings)
+        assertEqual(original_settings.book_chapter, false)
+        assertEqual(original_settings.chapter_time_to_read, false)
+        assertEqual(original_settings.disable_progress_bar, true)
+        assertEqual(original_settings.lock_tap, true)
+        assertEqual(original_settings.order[1], "battery")
+
+        assertEqual(footer.settings.disabled, false)
+        assertEqual(footer.settings.all_at_once, true)
+        assertEqual(footer.settings.book_chapter, true)
+        assertEqual(footer.settings.chapter_time_to_read, true)
+        assertEqual(footer.settings.dynamic_filler, true)
+        assertEqual(footer.settings.disable_progress_bar, false)
+        assertEqual(footer.settings.chapter_progress_bar, false)
+        assertEqual(footer.settings.progress_bar_position, "below")
+        assertEqual(footer.settings.progress_style_thin, true)
+        assertEqual(footer.settings.lock_tap, false)
+        assertEqual(footer.settings.battery, false)
+        assertEqual(footer.settings.time, false)
+        assertEqual(footer.settings.order[1], "book_chapter")
+        assertEqual(footer.settings.order[2], "dynamic_filler")
+        assertEqual(footer.settings.order[3], "chapter_time_to_read")
+
+        assertEqual(progress_style.thick, false)
+        assertEqual(progress_style.height, 3)
+        assertEqual(applied_mode, 1)
+        assertEqual(toc_markers_updated, true)
+        assertEqual(refreshed.refresh, true)
+        assertEqual(refreshed.signal, true)
+        assertEqual(rescheduled, true)
+    end)
+    package.loaded["modules.reader.controller"] = nil
+    G_reader_settings = saved_reader_settings
+end)
+
 test("Plain UI reader controller is created only for rolling ReaderUI", function()
     local installed_stats = 0
     local controller_creations = 0
