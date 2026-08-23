@@ -309,7 +309,7 @@ test("reader controller installs one swipe hook and restores it safely", functio
     package.loaded["modules.reader.controller"] = nil
 end)
 
-test("Plain UI reader is default-enabled, opt-out aware, and rolling-only", function()
+test("Plain UI reader controller is created only for rolling ReaderUI", function()
     local installed_stats = 0
     local controller_creations = 0
     local WidgetContainer = {}
@@ -328,7 +328,6 @@ test("Plain UI reader is default-enabled, opt-out aware, and rolling-only", func
             return { ui = ui, onReaderReady = function() end }
         end,
     }
-    local old_settings = G_reader_settings
     withModules({
         ["ui/widget/container/widgetcontainer"] = WidgetContainer,
         ["modules.compat.user_patches"] = compat,
@@ -341,8 +340,6 @@ test("Plain UI reader is default-enabled, opt-out aware, and rolling-only", func
     }, function()
         local PlainUI = assert(loadfile("main.lua"))()
         local file_manager_plugin = setmetatable({ ui = {} }, PlainUI)
-        G_reader_settings = nil
-        assertEqual(file_manager_plugin:isReaderEnabled(), true)
         assertEqual(file_manager_plugin:getReaderController(), nil)
 
         local reader_plugin = setmetatable({ path = "/plugin", ui = { rolling = {} } }, PlainUI)
@@ -350,16 +347,8 @@ test("Plain UI reader is default-enabled, opt-out aware, and rolling-only", func
         assertEqual(controller_creations, 1)
         assertTruthy(reader_plugin:getReaderController())
         assertEqual(controller_creations, 1)
-
-        G_reader_settings = { isFalse = function(_, key)
-            return key == "plainui_reader_enabled"
-        end }
-        local disabled = setmetatable({ ui = { rolling = {} } }, PlainUI)
-        assertEqual(disabled:isReaderEnabled(), false)
-        assertEqual(disabled:getReaderController(), nil)
         assertEqual(installed_stats, 1)
     end)
-    G_reader_settings = old_settings
 end)
 
 test("Plain UI leaves every active legacy patch authoritative for the session", function()

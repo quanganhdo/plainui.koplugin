@@ -38,16 +38,6 @@ return {
 
 Restart KOReader after changing the setting.
 
-The Plain UI reader toolbar is enabled by default. To keep the library interface but use KOReader's standard reading menu, add `plainui_reader_enabled` to `settings.reader.lua`:
-
-```lua
-return {
-    ["plainui_reader_enabled"] = false,
-}
-```
-
-Restart KOReader after changing the setting.
-
 ## Credits
 
 Please visit [plainui.koplugin](https://github.com/quanganhdo/plainui.koplugin) for the latest updates.
