@@ -8,47 +8,6 @@ local UIManager = require("ui/uimanager")
 local Controller = {}
 Controller.__index = Controller
 
-local FOOTER_CONTENT_ITEMS = {
-    "additional_content",
-    "battery",
-    "book_author",
-    "book_chapter",
-    "book_time_to_read",
-    "book_title",
-    "bookmark_count",
-    "chapter_progress",
-    "chapter_time_to_read",
-    "custom_text",
-    "dynamic_filler",
-    "dynamic_filler2",
-    "frontlight",
-    "frontlight_warmth",
-    "mem_usage",
-    "page_progress",
-    "page_turning_inverted",
-    "pages_left",
-    "pages_left_book",
-    "percentage",
-    "time",
-    "wifi_status",
-}
-
-local function deepCopy(value, seen)
-    if type(value) ~= "table" then
-        return value
-    end
-    seen = seen or {}
-    if seen[value] then
-        return seen[value]
-    end
-    local copy = {}
-    seen[value] = copy
-    for key, item in pairs(value) do
-        copy[deepCopy(key, seen)] = deepCopy(item, seen)
-    end
-    return setmetatable(copy, getmetatable(value))
-end
-
 function Controller.new(plugin, ui)
     return setmetatable({
         owner = plugin,
@@ -77,61 +36,8 @@ end
 
 function Controller:onReaderReady()
     local TypographyOverlay = require("modules.reader.typography_overlay")
-    self:enforceReaderChrome()
     TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
     self:installSwipeHandler()
-end
-
-function Controller:enforceReaderChrome()
-    if not self.ui then
-        return false
-    end
-
-    -- CRe uses 1 for hidden and 0 for visible. Apply this only to the live
-    -- document: do not touch its configurable value or either settings store.
-    self.ui:handleEvent(Event:new("SetStatusLine", 1))
-
-    local footer = self.ui.view and self.ui.view.footer
-    if not footer or not footer.settings or not footer.progress_bar then
-        logger.warn("PlainUI: cannot apply reader footer layout")
-        return false
-    end
-
-    -- ReaderFooter.settings normally aliases the table in G_reader_settings.
-    -- Detach it before applying Plain UI's session-only presentation.
-    local settings = deepCopy(footer.settings)
-    for _, item in ipairs(FOOTER_CONTENT_ITEMS) do
-        settings[item] = false
-    end
-    settings.disabled = false
-    settings.all_at_once = true
-    settings.auto_refresh_time = true
-    settings.book_chapter = true
-    settings.chapter_time_to_read = true
-    settings.dynamic_filler = true
-    settings.disable_progress_bar = false
-    settings.chapter_progress_bar = false
-    settings.hide_empty_generators = true
-    settings.lock_tap = false
-    settings.progress_bar_position = "below"
-    settings.progress_style_thin = true
-    settings.order = {
-        [0] = "off",
-        [1] = "book_chapter",
-        [2] = "dynamic_filler",
-        [3] = "chapter_time_to_read",
-    }
-    footer.settings = settings
-
-    footer:set_mode_index()
-    footer:set_has_no_mode()
-    footer.progress_bar:updateStyle(false, settings.progress_style_thin_height)
-    footer:updateFooterTextGenerator()
-    footer:applyFooterMode(footer.mode_list.page_progress)
-    footer:setTocMarkers()
-    footer:refreshFooter(true, true)
-    footer:rescheduleFooterAutoRefreshIfNeeded()
-    return true
 end
 
 function Controller:hasAnchoredReadingStatsPopup()
