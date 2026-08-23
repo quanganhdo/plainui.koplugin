@@ -206,7 +206,9 @@ test("reading stats installation is idempotent and preserves legacy hooks", func
     package.loaded["modules.reader.reading_stats_popup"] = saved_service
 end)
 
-test("shared status indicators preserve reader and FileManager battery APIs", function()
+test("shared status indicators map combined battery and Wi-Fi icon states", function()
+    local frontlight_available = false
+    local frontlight_on = false
     local power = {
         getCapacity = function() return 60 end,
         getAuxCapacity = function() return 40 end,
@@ -215,16 +217,15 @@ test("shared status indicators preserve reader and FileManager battery APIs", fu
         isAuxCharged = function() return true end,
         isAuxCharging = function() return false end,
         isAuxBatteryConnected = function() return true end,
-        getBatterySymbol = function(_, charged, charging, capacity)
-            return string.format("%s:%s:%d", tostring(charged), tostring(charging), capacity)
-        end,
+        isFrontlightOn = function() return frontlight_on end,
     }
     local stubs = {
         ["device"] = {
+            screen = { night_mode = false },
             hasBattery = function() return true end,
             hasAuxBattery = function() return true end,
             hasWifiToggle = function() return true end,
-            hasFrontlight = function() return false end,
+            hasFrontlight = function() return frontlight_available end,
             getPowerDevice = function() return power end,
         },
         ["ui/event"] = {},
@@ -243,10 +244,56 @@ test("shared status indicators preserve reader and FileManager battery APIs", fu
     withModules(stubs, function()
         package.loaded["modules.shared.status_indicators"] = nil
         local StatusIndicators = require("modules.shared.status_indicators")
-        assertEqual(StatusIndicators.getBatteryPercentageText(), "60%")
-        assertEqual(StatusIndicators.getReaderBatteryText(), "false:true:60 + true:false:40")
-        assertEqual(StatusIndicators.getBatteryText(), "true:false:50")
-        assertTruthy(StatusIndicators.getWifiSlotWidth("font", 12, 3) > 0)
+        local battery = StatusIndicators.getCombinedBatteryState()
+        assertEqual(battery.capacity, 50)
+        assertEqual(battery.charged, false)
+        assertEqual(battery.charging, true)
+        assertEqual(StatusIndicators.getBatteryPercentageText(), "50%")
+        assertEqual(StatusIndicators.getBatteryIconName(), "battery-vertical-charging")
+        assertTruthy(StatusIndicators.getBatteryIconPath():find(
+            "/icons/tabler/battery-vertical-charging.svg",
+            1,
+            true
+        ))
+        assertEqual(StatusIndicators.getWifiIconName(), "wifi-off")
+        assertTruthy(StatusIndicators.getWifiIconPath():find(
+            "/icons/tabler/wifi-off.svg",
+            1,
+            true
+        ))
+        assertTruthy(StatusIndicators.getNightModeIconPath():find(
+            "/icons/tabler/moon.svg",
+            1,
+            true
+        ))
+        stubs["device"].screen.night_mode = true
+        assertEqual(StatusIndicators.getNightModeIconName(), "moon-filled")
+        assertEqual(StatusIndicators.getFrontlightIconName(), "bulb-off")
+        frontlight_available = true
+        frontlight_on = true
+        assertEqual(StatusIndicators.getFrontlightIconName(), "bulb")
+
+        local iconFor = StatusIndicators._test.getBatteryIconNameForState
+        assertEqual(iconFor{ capacity = 0 }, "battery-vertical")
+        assertEqual(iconFor{ capacity = 19 }, "battery-vertical")
+        assertEqual(iconFor{ capacity = 20 }, "battery-vertical-1")
+        assertEqual(iconFor{ capacity = 40 }, "battery-vertical-2")
+        assertEqual(iconFor{ capacity = 60 }, "battery-vertical-3")
+        assertEqual(iconFor{ capacity = 80 }, "battery-vertical-4")
+        assertEqual(iconFor{ capacity = 100 }, "battery-vertical-4")
+        assertEqual(iconFor{ capacity = 10, charging = true }, "battery-vertical-charging")
+        assertEqual(iconFor{ capacity = 10, charged = true }, "battery-vertical-charged")
+
+        local widths = StatusIndicators.getWidths("font", 12, 3, {
+            night_mode = 20,
+            frontlight = 20,
+            wifi = 20,
+            battery = 14,
+        })
+        assertEqual(widths.night_mode, 26)
+        assertEqual(widths.frontlight, 26)
+        assertEqual(widths.wifi, 26)
+        assertEqual(widths.battery, 20)
     end)
     package.loaded["modules.shared.status_indicators"] = nil
 end)

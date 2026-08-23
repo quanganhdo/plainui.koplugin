@@ -19,6 +19,7 @@ local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Screen = Device.screen
 local Size = require("ui/size")
+local StatusIcon = require("modules.shared.status_icon")
 local StatusIndicators = require("modules.shared.status_indicators")
 local TextWidget = require("ui/widget/textwidget")
 local TopContainer = require("ui/widget/container/topcontainer")
@@ -109,19 +110,15 @@ function ReaderOverlay:init()
     local content_width = screen_width - 2 * horizontal_padding
     local status_height = Size.item.height_default
     local action_height = Size.item.height_big
-    local status_font_face = "smallinfofont"
-    local status_font_size = 18
     local status_padding_h = Screen:scaleBySize(7)
     local status_gap = Screen:scaleBySize(12)
-    local battery_face = Font:getFace("smallinfofont", 18)
-    local battery_text = StatusIndicators.getReaderBatteryText()
+    local wifi_icon_size = Screen:scaleBySize(20)
+    local battery_icon_height = Screen:scaleBySize(20)
+    local battery_icon_width = math.floor(battery_icon_height * 0.7 + 0.5)
+    local battery_state = StatusIndicators.getCombinedBatteryState()
     local battery_percentage_text = StatusIndicators.getBatteryPercentageText()
-    local wifi_text = StatusIndicators.getWifiText()
-    local status_slot_width = StatusIndicators.getWifiSlotWidth(
-        status_font_face,
-        status_font_size,
-        status_padding_h
-    )
+    local wifi_state = StatusIndicators.getWifiState()
+    local status_slot_width = wifi_icon_size + 2 * status_padding_h
     local back_text = "←  " .. _("File Manager")
     local back_text_widget = TextWidget:new{
         text = back_text,
@@ -141,21 +138,25 @@ function ReaderOverlay:init()
         text = self:getTimeText(),
         face = Font:getFace("smallinfofont", 16),
     }
-    self.battery_widget = TextWidget:new{
-        text = battery_text,
-        face = battery_face,
+    self.battery_widget = StatusIcon:new{
+        icon_file = StatusIndicators.getBatteryIconPath(),
+        icon_width = battery_icon_width,
+        icon_height = battery_icon_height,
+        visible = battery_state.available,
+        width = battery_icon_width,
+        height = status_height,
     }
     self.battery_percentage_widget = TextWidget:new{
         text = battery_percentage_text,
         face = Font:getFace("smallinfofont", 14),
     }
-    self.wifi_widget = TextWidget:new{
-        text = wifi_text,
-        face = Font:getFace(status_font_face, status_font_size),
-    }
-    local wifi_slot = CenterContainer:new{
-        dimen = Geom:new{ w = status_slot_width, h = status_height },
-        self.wifi_widget,
+    self.wifi_widget = StatusIcon:new{
+        icon_file = StatusIndicators.getWifiIconPath(),
+        icon_width = wifi_icon_size,
+        icon_height = wifi_icon_size,
+        visible = wifi_state.available,
+        width = status_slot_width,
+        height = status_height,
     }
     self.battery_group = HorizontalGroup:new{
         allow_mirroring = false,
@@ -169,7 +170,7 @@ function ReaderOverlay:init()
     }
     self.status_right_group = HorizontalGroup:new{
         allow_mirroring = false,
-        wifi_slot,
+        self.wifi_widget,
         HorizontalSpan:new{ width = status_gap },
         self.battery_slot,
     }
@@ -411,15 +412,15 @@ function ReaderOverlay:getTimeText()
 end
 
 function ReaderOverlay:refreshStatus()
-    local battery_text = StatusIndicators.getReaderBatteryText()
+    local battery_state = StatusIndicators.getCombinedBatteryState()
     local battery_percentage_text = StatusIndicators.getBatteryPercentageText()
-    local wifi_text = StatusIndicators.getWifiText()
+    local wifi_state = StatusIndicators.getWifiState()
     self.time_widget:setText(self:getTimeText())
-    self.battery_widget:setText(battery_text)
+    self.battery_widget:setIcon(StatusIndicators.getBatteryIconPath(), battery_state.available)
     self.battery_percentage_widget:setText(battery_percentage_text)
     self.battery_group:resetLayout()
     self.battery_slot.dimen.w = self.battery_group:getSize().w
-    self.wifi_widget:setText(wifi_text)
+    self.wifi_widget:setIcon(StatusIndicators.getWifiIconPath(), wifi_state.available)
     self.status_right_group:resetLayout()
     UIManager:setDirty(self, function()
         return "ui", self.status_refresh_dimen

@@ -15,8 +15,11 @@ local StatusIndicators = {}
 StatusIndicators.NIGHT_MODE_SYMBOL = "◐"
 StatusIndicators.FRONTLIGHT_SYMBOL = "☼"
 StatusIndicators.FRONTLIGHT_OFF_SYMBOL = "☀"
-StatusIndicators.WIFI_ON_SYMBOL = ""
-StatusIndicators.WIFI_OFF_SYMBOL = ""
+
+local source = debug.getinfo(1, "S").source
+local module_path = source:sub(1, 1) == "@" and source:sub(2) or source
+local plugin_path = module_path:match("^(.*)/modules/shared/status_indicators%.lua$") or "."
+local icons_path = plugin_path .. "/icons/tabler"
 
 local function measureTextWidth(candidates, font_face, font_size, padding_h)
     local face = Font:getFace(font_face, font_size)
@@ -32,64 +35,119 @@ local function measureTextWidth(candidates, font_face, font_size, padding_h)
     return width + 2 * padding_h
 end
 
-function StatusIndicators.getWifiSlotWidth(font_face, font_size, padding_h)
-    return measureTextWidth({
-        StatusIndicators.WIFI_ON_SYMBOL,
-        StatusIndicators.WIFI_OFF_SYMBOL,
-    }, font_face, font_size, padding_h)
+function StatusIndicators.getIconPath(icon_name)
+    return icons_path .. "/" .. icon_name .. ".svg"
 end
 
-function StatusIndicators.getBatteryText()
+function StatusIndicators.getNightModeIconName()
+    return Device.screen.night_mode and "moon-filled" or "moon"
+end
+
+function StatusIndicators.getNightModeIconPath()
+    return StatusIndicators.getIconPath(StatusIndicators.getNightModeIconName())
+end
+
+function StatusIndicators.getFrontlightState()
+    local available = Device:hasFrontlight()
+    return {
+        available = available,
+        enabled = available and Device:getPowerDevice():isFrontlightOn() == true,
+    }
+end
+
+function StatusIndicators.getFrontlightIconName()
+    return StatusIndicators.getFrontlightState().enabled and "bulb" or "bulb-off"
+end
+
+function StatusIndicators.getFrontlightIconPath()
+    return StatusIndicators.getIconPath(StatusIndicators.getFrontlightIconName())
+end
+
+function StatusIndicators.getCombinedBatteryState()
     if not Device:hasBattery() then
-        return ""
+        return {
+            available = false,
+            capacity = 0,
+            charged = false,
+            charging = false,
+        }
     end
 
     local powerd = Device:getPowerDevice()
-    local batt_lvl = powerd:getCapacity()
+    local capacity = tonumber(powerd:getCapacity()) or 0
+    local charged = powerd:isCharged() == true
+    local charging = powerd:isCharging() == true
     if Device:hasAuxBattery() and powerd:isAuxBatteryConnected() then
-        batt_lvl = batt_lvl + powerd:getAuxCapacity()
-        return powerd:getBatterySymbol(powerd:isAuxCharged(), powerd:isAuxCharging(), batt_lvl / 2)
+        capacity = (capacity + (tonumber(powerd:getAuxCapacity()) or 0)) / 2
+        charged = charged and powerd:isAuxCharged() == true
+        charging = charging or powerd:isAuxCharging() == true
     end
-    return powerd:getBatterySymbol(powerd:isCharged(), powerd:isCharging(), batt_lvl)
+    return {
+        available = true,
+        capacity = math.max(0, math.min(100, capacity)),
+        charged = charged,
+        charging = charging,
+    }
 end
 
-function StatusIndicators.getReaderBatteryText()
-    if not Device:hasBattery() then
-        return ""
+local function getBatteryIconNameForState(state)
+    if state.charged then
+        return "battery-vertical-charged"
     end
+    if state.charging then
+        return "battery-vertical-charging"
+    end
+    if state.capacity >= 80 then
+        return "battery-vertical-4"
+    elseif state.capacity >= 60 then
+        return "battery-vertical-3"
+    elseif state.capacity >= 40 then
+        return "battery-vertical-2"
+    elseif state.capacity >= 20 then
+        return "battery-vertical-1"
+    end
+    return "battery-vertical"
+end
 
-    local powerd = Device:getPowerDevice()
-    local capacity = powerd:getCapacity()
-    local text = powerd:getBatterySymbol(powerd:isCharged(), powerd:isCharging(), capacity)
-    if Device:hasAuxBattery() and powerd:isAuxBatteryConnected() then
-        local aux_capacity = powerd:getAuxCapacity()
-        text = text .. " + " .. powerd:getBatterySymbol(
-            powerd:isAuxCharged(),
-            powerd:isAuxCharging(),
-            aux_capacity
-        )
-    end
-    return text
+function StatusIndicators.getBatteryIconName()
+    return getBatteryIconNameForState(StatusIndicators.getCombinedBatteryState())
+end
+
+function StatusIndicators.getBatteryIconPath()
+    return StatusIndicators.getIconPath(StatusIndicators.getBatteryIconName())
 end
 
 function StatusIndicators.getBatteryPercentageText()
-    if not Device:hasBattery() then
+    local state = StatusIndicators.getCombinedBatteryState()
+    if not state.available then
         return ""
     end
-    return tostring(Device:getPowerDevice():getCapacity()) .. "%"
+    return tostring(math.floor(state.capacity + 0.5)) .. "%"
 end
 
-function StatusIndicators.getWifiText()
-    if not Device:hasWifiToggle() then
-        return ""
+function StatusIndicators.getWifiState()
+    local available = Device:hasWifiToggle()
+    if not available then
+        return {
+            available = false,
+            enabled = false,
+        }
     end
     if NetworkMgr.is_wifi_on == nil then
         NetworkMgr:queryNetworkState()
     end
-    if NetworkMgr.is_wifi_on then
-        return StatusIndicators.WIFI_ON_SYMBOL
-    end
-    return StatusIndicators.WIFI_OFF_SYMBOL
+    return {
+        available = available,
+        enabled = available and NetworkMgr.is_wifi_on == true,
+    }
+end
+
+function StatusIndicators.getWifiIconName()
+    return StatusIndicators.getWifiState().enabled and "wifi" or "wifi-off"
+end
+
+function StatusIndicators.getWifiIconPath()
+    return StatusIndicators.getIconPath(StatusIndicators.getWifiIconName())
 end
 
 function StatusIndicators.getFrontlightText()
@@ -100,29 +158,20 @@ function StatusIndicators.getFrontlightText()
     return ""
 end
 
-function StatusIndicators.getWidths(font_face, font_size, padding_h)
-    local powerd = Device:getPowerDevice()
-    local battery_candidates = {
-        "",
-    }
-    if Device:hasBattery() then
-        table.insert(battery_candidates, powerd:getBatterySymbol(true, false, 100))
-        table.insert(battery_candidates, powerd:getBatterySymbol(false, true, 100))
-        table.insert(battery_candidates, powerd:getBatterySymbol(false, false, 100))
-    end
-
-    local icon_width = measureTextWidth({
+function StatusIndicators.getWidths(font_face, font_size, padding_h, icon_widths)
+    icon_widths = icon_widths or {}
+    local legacy_icon_width = measureTextWidth({
         StatusIndicators.NIGHT_MODE_SYMBOL,
         StatusIndicators.FRONTLIGHT_SYMBOL,
         StatusIndicators.FRONTLIGHT_OFF_SYMBOL,
-        StatusIndicators.WIFI_ON_SYMBOL,
-        StatusIndicators.WIFI_OFF_SYMBOL,
     }, font_face, font_size, padding_h)
     return {
-        night_mode = icon_width,
-        frontlight = icon_width,
-        wifi = icon_width,
-        battery = measureTextWidth(battery_candidates, font_face, font_size, padding_h),
+        night_mode = icon_widths.night_mode
+            and icon_widths.night_mode + 2 * padding_h or legacy_icon_width,
+        frontlight = icon_widths.frontlight
+            and icon_widths.frontlight + 2 * padding_h or legacy_icon_width,
+        wifi = (icon_widths.wifi or 0) + 2 * padding_h,
+        battery = (icon_widths.battery or 0) + 2 * padding_h,
     }
 end
 
@@ -136,7 +185,7 @@ function StatusIndicators.showBatteryInfo()
     end
 
     UIManager:show(InfoMessage:new{
-        text = StatusIndicators.getBatteryText(),
+        text = StatusIndicators.getBatteryPercentageText(),
     })
 end
 
@@ -180,5 +229,9 @@ function StatusIndicators.showWifiNetworks(refresh_callback)
         NetworkMgr:toggleWifiOn(complete_callback, true, true)
     end
 end
+
+StatusIndicators._test = {
+    getBatteryIconNameForState = getBatteryIconNameForState,
+}
 
 return StatusIndicators

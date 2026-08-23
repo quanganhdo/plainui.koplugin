@@ -18,6 +18,7 @@ local MetadataFacetDropdown = require("modules.metadata_facet_dropdown")
 local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local RightContainer = require("ui/widget/container/rightcontainer")
+local StatusIcon = require("modules.shared.status_icon")
 local StatusIndicators = require("modules.shared.status_indicators")
 local TabOptionDialog = require("modules.tab_option_dialog")
 local TabOptionPresenter = require("modules.tab_option_presenter")
@@ -379,37 +380,54 @@ function MetadataTabsTitleBar:init()
     table.insert(self, self.tabs_container)
     self:updateSelectedTab(false)
 
-    local status_widths = StatusIndicators.getWidths(self.tab_font_face, self.tab_font_size, self.status_padding_h)
+    self.status_icon_size = math.min(self.tab_label_height, Screen:scaleBySize(20))
+    self.status_icon_optical_offset = math.max(
+        1,
+        math.floor(self.status_icon_size * 0.1 + 0.5)
+    )
+    self.status_wifi_icon_size = self.status_icon_size
+    self.status_battery_icon_height = math.min(self.tab_label_height, Screen:scaleBySize(20))
+    self.status_battery_icon_width = math.floor(self.status_battery_icon_height * 0.7 + 0.5)
+    local status_widths = StatusIndicators.getWidths(
+        self.tab_font_face,
+        self.tab_font_size,
+        self.status_padding_h,
+        {
+            night_mode = self.status_icon_size,
+            frontlight = self.status_icon_size,
+            wifi = self.status_wifi_icon_size,
+            battery = self.status_battery_icon_width,
+        }
+    )
     self.night_mode_width = status_widths.night_mode
     self.frontlight_width = status_widths.frontlight
     self.wifi_width = status_widths.wifi
     self.battery_width = status_widths.battery
     self.status_width = self.night_mode_width + self.frontlight_width + self.wifi_width + self.battery_width + 3 * self.status_gap
-    self.night_mode_button = Button:new{
-        text = StatusIndicators.NIGHT_MODE_SYMBOL,
-        text_font_face = self.tab_font_face,
-        text_font_size = self.tab_font_size,
-        text_font_bold = false,
+    self.night_mode_icon_file = StatusIndicators.getNightModeIconPath()
+    self.night_mode_button = StatusIcon:new{
+        icon_file = self.night_mode_icon_file,
+        icon_width = self.status_icon_size,
+        icon_height = self.status_icon_size,
         width = self.night_mode_width,
         height = self.tab_label_height,
-        bordersize = 0,
-        padding_h = self.status_padding_h,
-        padding_v = self.tab_padding_v,
         callback = function()
             UIManager:broadcastEvent(Event:new("ToggleNightMode"))
+            UIManager:nextTick(function()
+                self:refreshStatusIndicators()
+            end)
         end,
-        show_parent = self.show_parent,
     }
-    self.frontlight_button = Button:new{
-        text = StatusIndicators.getFrontlightText(),
-        text_font_face = self.tab_font_face,
-        text_font_size = self.tab_font_size,
-        text_font_bold = false,
+    local frontlight_state = StatusIndicators.getFrontlightState()
+    self.frontlight_icon_file = StatusIndicators.getFrontlightIconPath()
+    self.frontlight_available = frontlight_state.available
+    self.frontlight_button = StatusIcon:new{
+        icon_file = self.frontlight_icon_file,
+        icon_width = self.status_icon_size,
+        icon_height = self.status_icon_size,
+        visible = self.frontlight_available,
         width = self.frontlight_width,
         height = self.tab_label_height,
-        bordersize = 0,
-        padding_h = self.status_padding_h,
-        padding_v = self.tab_padding_v,
         callback = function()
             if Device:hasFrontlight() then
                 UIManager:broadcastEvent(Event:new("ShowFlDialog"))
@@ -421,18 +439,17 @@ function MetadataTabsTitleBar:init()
                 self:refreshStatusIndicators()
             end
         end,
-        show_parent = self.show_parent,
     }
-    self.wifi_button = Button:new{
-        text = StatusIndicators.getWifiText(),
-        text_font_face = self.tab_font_face,
-        text_font_size = self.tab_font_size,
-        text_font_bold = false,
+    local wifi_state = StatusIndicators.getWifiState()
+    self.wifi_icon_file = StatusIndicators.getWifiIconPath()
+    self.wifi_available = wifi_state.available
+    self.wifi_button = StatusIcon:new{
+        icon_file = self.wifi_icon_file,
+        icon_width = self.status_wifi_icon_size,
+        icon_height = self.status_wifi_icon_size,
+        visible = self.wifi_available,
         width = self.wifi_width,
         height = self.tab_label_height,
-        bordersize = 0,
-        padding_h = self.status_padding_h,
-        padding_v = self.tab_padding_v,
         callback = function()
             StatusIndicators.toggleWifi(function()
                 self:updateStatusIndicators()
@@ -443,23 +460,21 @@ function MetadataTabsTitleBar:init()
                 self:updateStatusIndicators()
             end)
         end,
-        show_parent = self.show_parent,
     }
-    self.battery_button = Button:new{
-        text = StatusIndicators.getBatteryText(),
-        text_font_face = self.tab_font_face,
-        text_font_size = self.tab_font_size,
-        text_font_bold = false,
+    local battery_state = StatusIndicators.getCombinedBatteryState()
+    self.battery_icon_file = StatusIndicators.getBatteryIconPath()
+    self.battery_available = battery_state.available
+    self.battery_button = StatusIcon:new{
+        icon_file = self.battery_icon_file,
+        icon_width = self.status_battery_icon_width,
+        icon_height = self.status_battery_icon_height,
+        visible = self.battery_available,
         width = self.battery_width,
         height = self.tab_label_height,
-        bordersize = 0,
-        padding_h = self.status_padding_h,
-        padding_v = self.tab_padding_v,
         hold_callback = function()
             StatusIndicators.showBatteryInfo()
             self:updateStatusIndicators()
         end,
-        show_parent = self.show_parent,
     }
     local status_row_items = {
         align = "bottom",
@@ -479,7 +494,15 @@ function MetadataTabsTitleBar:init()
     }
     self.status_stack = VerticalGroup:new{
         align = "right",
-        VerticalSpan:new{ width = math.max(0, titlebar_body_height - self.status_group:getSize().h) },
+        VerticalSpan:new{
+            width = math.max(
+                0,
+                titlebar_body_height
+                    - self.status_group:getSize().h
+                    - self.tab_padding_v
+                    - self.status_icon_optical_offset
+            ),
+        },
         self.status_group,
     }
     self.status_container = RightContainer:new{
@@ -741,21 +764,34 @@ function MetadataTabsTitleBar:updateStatusIndicators(refresh)
         return
     end
 
-    local battery_text = StatusIndicators.getBatteryText()
-    local wifi_text = StatusIndicators.getWifiText()
-    local frontlight_text = StatusIndicators.getFrontlightText()
-    if self.battery_text == battery_text
-            and self.wifi_text == wifi_text
-            and self.frontlight_text == frontlight_text then
+    local battery_state = StatusIndicators.getCombinedBatteryState()
+    local battery_icon_file = StatusIndicators.getBatteryIconPath()
+    local night_mode_icon_file = StatusIndicators.getNightModeIconPath()
+    local wifi_state = StatusIndicators.getWifiState()
+    local wifi_icon_file = StatusIndicators.getWifiIconPath()
+    local frontlight_state = StatusIndicators.getFrontlightState()
+    local frontlight_icon_file = StatusIndicators.getFrontlightIconPath()
+    if self.battery_icon_file == battery_icon_file
+            and self.battery_available == battery_state.available
+            and self.night_mode_icon_file == night_mode_icon_file
+            and self.wifi_icon_file == wifi_icon_file
+            and self.wifi_available == wifi_state.available
+            and self.frontlight_icon_file == frontlight_icon_file
+            and self.frontlight_available == frontlight_state.available then
         return
     end
 
-    self.battery_text = battery_text
-    self.wifi_text = wifi_text
-    self.frontlight_text = frontlight_text
-    self.battery_button:setText(battery_text, self.battery_width)
-    self.wifi_button:setText(wifi_text, self.wifi_width)
-    self.frontlight_button:setText(frontlight_text, self.frontlight_width)
+    self.battery_icon_file = battery_icon_file
+    self.battery_available = battery_state.available
+    self.night_mode_icon_file = night_mode_icon_file
+    self.wifi_icon_file = wifi_icon_file
+    self.wifi_available = wifi_state.available
+    self.frontlight_icon_file = frontlight_icon_file
+    self.frontlight_available = frontlight_state.available
+    self.battery_button:setIcon(battery_icon_file, battery_state.available)
+    self.night_mode_button:setIcon(night_mode_icon_file)
+    self.wifi_button:setIcon(wifi_icon_file, wifi_state.available)
+    self.frontlight_button:setIcon(frontlight_icon_file, frontlight_state.available)
     if refresh ~= false then
         UIManager:setDirty(self.show_parent, "ui", self.dimen)
     end
