@@ -10,6 +10,7 @@ local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
 local Font = require("ui/font")
 local Geom = require("ui/geometry")
+local HistorySort = require("modules.history_sort")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local InfoMessage = require("ui/widget/infomessage")
@@ -17,6 +18,7 @@ local LeftContainer = require("ui/widget/container/leftcontainer")
 local MetadataFacetDropdown = require("modules.metadata_facet_dropdown")
 local NetworkMgr = require("ui/network/manager")
 local OverlapGroup = require("ui/widget/overlapgroup")
+local ReadHistory = require("readhistory")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local StatusIcon = require("modules.shared.status_icon")
 local StatusIndicators = require("modules.shared.status_indicators")
@@ -103,7 +105,6 @@ local BOOKS_FILTER_STATUS = {
 }
 
 local BOOKS_SORT_COLLATE = {
-    recent = "access",
     title = "title",
     progress = "percent_natural",
 }
@@ -914,6 +915,10 @@ FileChooser.getCollate = function(self)
         local books_options = TabViewOptions.get("books")
         if books_options.sort == "legacy" then
             return FileChooser_getCollate(self)
+        end
+
+        if books_options.sort == "recent" then
+            return HistorySort.createCollate(ReadHistory.hist, self.ui), "plainui_history"
         end
 
         local collate_id = BOOKS_SORT_COLLATE[books_options.sort]
