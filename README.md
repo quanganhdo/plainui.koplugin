@@ -2,6 +2,8 @@
 
 Plain UI is a minimal library and reading interface for KOReader, with quick access to books and common reading controls.
 
+See the [short user guide](docs/index.html) for the full interface and everyday controls.
+
 ## Features
 
 - Browse Books, Series, Authors, and Tags in cover grids or detailed lists, with filters and sorting.
