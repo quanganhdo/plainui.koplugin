@@ -523,4 +523,58 @@ test("active code never requires stale unnamespaced reader modules", function()
     end
 end)
 
+test("bottom menu hooks open previews and chevron bypasses the hook", function()
+    local native_calls, shown, closes, pushed, events = 0, 0, 0, 0, {}
+    local native = function() native_calls = native_calls + 1; return true end
+    local class = { onShowConfigMenu = native, onSwipeShowConfigMenu = function() end }
+    local config = setmetatable({}, { __index = class })
+    withModules({
+        ["ui/event"] = { new = function(_, name, value) return { name = name, value = value } end },
+        ["logger"] = { info = function() end },
+        ["ui/uimanager"] = {
+            show = function() shown = shown + 1 end,
+            close = function() closes = closes + 1 end,
+        },
+        ["modules.reader.bottom_navigation"] = { new = function(_, options) return options end },
+    }, function()
+        package.loaded["modules.reader.controller"] = nil
+        local Controller = require("modules.reader.controller")
+        local ui = {
+            config = config, thumbnail = {}, getCurrentPage = function() return 25 end,
+            link = { addCurrentLocationToStack = function() pushed = pushed + 1 end },
+            handleEvent = function(_, event) events[#events + 1] = event end,
+        }
+        local c = Controller.new({path = "/plugin"}, ui)
+        assertEqual(c:installBottomNavigationHandler(), true)
+        assertEqual(c:installBottomNavigationHandler(), false)
+        config:onSwipeShowConfigMenu{ges = "pan", direction = "north"}
+        assertEqual(shown, 0)
+        config:onSwipeShowConfigMenu{ges = "swipe", direction = "north"}
+        assertEqual(shown, 1)
+        assertEqual(native_calls, 0)
+        assertEqual(pushed, 0)
+        c:showFullConfigMenu()
+        assertEqual(native_calls, 1)
+        assertEqual(closes, 1)
+        config:onShowConfigMenu()
+        c:commitNavigationPreview(25)
+        assertEqual(pushed, 0)
+        config:onShowConfigMenu()
+        c:commitNavigationPreview(75)
+        assertEqual(pushed, 1)
+        assertEqual(events[#events].name, "GotoPage")
+        assertEqual(events[#events].value, 75)
+        c:stop()
+        assertEqual(rawget(config, "onShowConfigMenu"), nil)
+        assertEqual(rawget(config, "onSwipeShowConfigMenu"), nil)
+        assertEqual(config.onShowConfigMenu, native)
+        c:installBottomNavigationHandler()
+        local later = function() end
+        config.onShowConfigMenu = later
+        c:stop()
+        assertEqual(config.onShowConfigMenu, later)
+    end)
+    package.loaded["modules.reader.controller"] = nil
+end)
+
 run()

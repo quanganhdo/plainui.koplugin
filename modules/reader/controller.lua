@@ -38,10 +38,58 @@ function Controller:onReaderReady()
     local TypographyOverlay = require("modules.reader.typography_overlay")
     TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
     self:installSwipeHandler()
+    self:installBottomNavigationHandler()
     if not self.navigation_history then
         self.navigation_history = require("modules.reader.navigation_history").new(self.ui)
         self.navigation_history:install()
     end
+end
+
+function Controller:installBottomNavigationHandler()
+    local config = self.ui and self.ui.config
+    if not config or self.installed_config_handler then return false end
+    self.original_config_own = rawget(config, "onShowConfigMenu")
+    self.original_config_handler = config.onShowConfigMenu
+    self.original_config_swipe_own = rawget(config, "onSwipeShowConfigMenu")
+    self.installed_config_handler = function()
+        self:showBottomNavigation()
+        return true
+    end
+    self.installed_config_swipe = function(_, ges)
+        if not ges or ges.direction ~= "north" then return end
+        -- ReaderConfig also dispatches pan to its swipe handler. Wait for
+        -- finger release, so the opening drag cannot activate the chevron.
+        if ges.ges ~= "pan" and ges.ges ~= "hold_pan" then self:showBottomNavigation() end
+        self.ui:handleEvent(Event:new("HandledAsSwipe"))
+        return true
+    end
+    config.onShowConfigMenu = self.installed_config_handler
+    config.onSwipeShowConfigMenu = self.installed_config_swipe
+    return true
+end
+
+function Controller:showBottomNavigation()
+    if self.bottom_navigation or not self.ui or not self.ui.thumbnail then return end
+    self:closeReadingStatsPopup()
+    self:closeTypographyOverlay()
+    self:closeOverlay()
+    local BottomNavigation = require("modules.reader.bottom_navigation")
+    self.bottom_navigation = BottomNavigation:new{ plugin = self }
+    UIManager:show(self.bottom_navigation)
+end
+
+function Controller:closeBottomNavigation()
+    local widget = self.bottom_navigation
+    if not widget then return end
+    self.bottom_navigation = nil
+    UIManager:close(widget)
+end
+
+function Controller:commitNavigationPreview(page)
+    self:closeBottomNavigation()
+    if page == self.ui:getCurrentPage() then return end
+    self.ui.link:addCurrentLocationToStack()
+    self.ui:handleEvent(Event:new("GotoPage", page))
 end
 
 function Controller:hasAnchoredReadingStatsPopup()
@@ -131,6 +179,7 @@ function Controller:switchToolbarAction(pos, current_action)
 end
 
 function Controller:onSetDimensions()
+    self:closeBottomNavigation()
     self:closeReadingStatsPopup()
     self:closeOverlay()
     self:closeTypographyOverlay()
@@ -147,6 +196,7 @@ function Controller:onSwipeShowOverlay(ges)
 end
 
 function Controller:showOverlay()
+    self:closeBottomNavigation()
     if self.overlay then
         return
     end
@@ -214,6 +264,10 @@ end
 function Controller:showFullConfigMenu()
     self:closeReadingStatsPopup()
     self:closeTypographyOverlay()
+    self:closeBottomNavigation()
+    if self.original_config_handler then
+        return self.original_config_handler(self.ui.config)
+    end
     self.ui:handleEvent(Event:new("ShowConfigMenu"))
 end
 
@@ -244,6 +298,18 @@ function Controller:backToFileManager()
 end
 
 function Controller:stop()
+    self:closeBottomNavigation()
+    local config = self.ui and self.ui.config
+    if config and self.installed_config_handler then
+        if config.onShowConfigMenu == self.installed_config_handler then
+            config.onShowConfigMenu = self.original_config_own
+        end
+        if config.onSwipeShowConfigMenu == self.installed_config_swipe then
+            config.onSwipeShowConfigMenu = self.original_config_swipe_own
+        end
+    end
+    self.installed_config_handler, self.installed_config_swipe = nil, nil
+    self.original_config_handler = nil
     if self.navigation_history then
         self.navigation_history:stop()
         self.navigation_history = nil
