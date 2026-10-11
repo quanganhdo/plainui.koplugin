@@ -42,7 +42,7 @@ function BatteryMenu:init()
     }
     self._added_widgets = {
         FrameContainer:new{
-            width = width, bordersize = 0, padding = 0, padding_left = inset,
+            width = width, bordersize = 0, padding = 0, padding_left = inset, padding_right = inset,
             not_focusable = true,
             LeftContainer:new{
                 dimen = Geom:new{ w = width - 2 * inset, h = Screen:scaleBySize(36) },
