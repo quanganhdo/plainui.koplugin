@@ -220,6 +220,7 @@ function Controller:switchToolbarAction(pos, current_action)
         return false
     end
 
+    self:closeMoreMenu()
     self:closeTypographyOverlay()
     if button.action_id == current_action then
         return true
@@ -233,6 +234,7 @@ function Controller:switchToolbarAction(pos, current_action)
 end
 
 function Controller:onSetDimensions()
+    self:closeMoreMenu()
     self:closeBottomNavigation()
     self:closeReadingStatsPopup()
     self:closeOverlay()
@@ -262,6 +264,7 @@ function Controller:showOverlay()
 end
 
 function Controller:closeOverlay()
+    self:closeMoreMenu()
     if not self.overlay then
         return
     end
@@ -271,6 +274,7 @@ function Controller:closeOverlay()
 end
 
 function Controller:showTypographyOverlay(options)
+    self:closeMoreMenu()
     if self.typography_overlay or not self.ui or not self.ui.rolling then
         return
     end
@@ -316,6 +320,7 @@ function Controller:closeTypographyOverlay()
 end
 
 function Controller:showFullConfigMenu()
+    self:closeMoreMenu()
     self:closeReadingStatsPopup()
     self:closeTypographyOverlay()
     self:closeBottomNavigation()
@@ -329,6 +334,49 @@ function Controller:showDefaultMenu()
     self:closeReadingStatsPopup()
     self:closeOverlay()
     self.ui:handleEvent(Event:new("ShowMenu"))
+end
+
+function Controller:showMoreMenu(anchor)
+    if self.more_menu then self:closeMoreMenu(); return end
+    self:closeReadingStatsPopup()
+    self:closeTypographyOverlay()
+    local MoreMenu = require("modules.reader.more_menu")
+    self.more_menu = MoreMenu:new{ plugin = self, anchor = anchor and anchor:copy() }
+    self:setToolbarSelected("more")
+    UIManager:show(self.more_menu)
+end
+
+function Controller:closeMoreMenu()
+    if not self.more_menu then return end
+    local menu = self.more_menu
+    self.more_menu = nil
+    UIManager:close(menu)
+end
+
+function Controller:runMoreAction(key)
+    -- Recheck native capabilities and sync configuration at selection time.
+    local items = require("modules.reader.more_actions").getItems(self.ui)
+    self:closeMoreMenu()
+    for _, item in ipairs(items) do
+        if item.key == key then
+            self:closeOverlay()
+            if key == "disable_touch" then
+                local ConfirmBox = require("ui/widget/confirmbox")
+                local _ = require("gettext")
+                UIManager:show(ConfirmBox:new{
+                    text = require("modules.reader.more_actions").getTouchInstructions(),
+                    ok_text = _("Disable"),
+                    ok_callback = function()
+                        self.ui:handleEvent(Event:new(item.event, item.arg))
+                    end,
+                })
+                return true
+            end
+            self.ui:handleEvent(Event:new(item.event, item.arg))
+            return true
+        end
+    end
+    return false
 end
 
 function Controller:showNavigationPanel(event)

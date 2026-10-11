@@ -329,6 +329,13 @@ function ReaderOverlay:init()
     if stats_button then
         table.insert(self.toolbar_action_buttons, stats_button)
     end
+    self.more_button = FileIconButton:new{
+        action_id = "more", icon_file = action_icon_dir .. "dots.svg",
+        width = action_button_width, height = action_height,
+        icon_width = action_icon_size, icon_height = action_icon_size,
+        callback = function() self.plugin:showMoreMenu(self.more_button.dimen) end,
+    }
+    table.insert(self.toolbar_action_buttons, self.more_button)
     local action_control_children = {
         allow_mirroring = false,
     }
