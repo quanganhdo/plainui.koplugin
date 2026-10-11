@@ -285,6 +285,7 @@ local function newSliderControl(options)
     local label_widget = TextWidget:new{
         text = options.label,
         face = Font:getFace("cfont", 17),
+        bold = true,
     }
     local label_container = LeftContainer:new{
         dimen = Geom:new{ w = options.label_width, h = options.row_height },
@@ -643,7 +644,7 @@ function TypographyOverlay:init()
         bordersize = 0,
         padding_h = 0,
         padding_v = 0,
-        text_font_bold = false,
+        text_font_bold = true,
         text_font_face = "cfont",
         text_font_size = 18,
         show_parent = self,
@@ -768,6 +769,7 @@ function TypographyOverlay:init()
         TextWidget:new{
             text = _("Text Alignment"),
             face = Font:getFace("cfont", 17),
+            bold = true,
         },
     }
     local alignment_width = content_width - label_width - slider_gap

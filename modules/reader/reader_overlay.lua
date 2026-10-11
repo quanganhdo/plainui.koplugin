@@ -374,6 +374,7 @@ function ReaderOverlay:init()
     self.book_title_widget = TextWidget:new{
         text = title:gsub("%s+", " "),
         face = Font:getFace("smallinfofont", 18),
+        bold = true,
         max_width = title_width,
         truncate_with_ellipsis = true,
         truncate_left = false,
