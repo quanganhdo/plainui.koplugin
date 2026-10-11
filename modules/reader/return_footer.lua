@@ -6,6 +6,7 @@ local Font = require("ui/font")
 local Geom = require("ui/geometry")
 local GestureRange = require("ui/gesturerange")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local ReturnStyle = require("modules.shared.return_style")
 local Screen = require("device").screen
 local TextWidget = require("ui/widget/textwidget")
 local T = require("ffi/util").template
@@ -16,11 +17,11 @@ local ReturnFooter = InputContainer:extend{
 }
 
 function ReturnFooter:init()
-    self.padding = Screen:scaleBySize(12)
+    self.padding = ReturnStyle.padding
     self.line_height = Screen:scaleBySize(1)
     self.dimen = Geom:new{
-        x = 0, y = Screen:getHeight() - Screen:scaleBySize(44),
-        w = Screen:getWidth(), h = Screen:scaleBySize(44),
+        x = 0, y = Screen:getHeight() - ReturnStyle.height,
+        w = Screen:getWidth(), h = ReturnStyle.height,
     }
     self.ges_events = {
         TapPlainReturnFooter = { GestureRange:new{ ges = "tap", range = self.dimen } },
@@ -49,7 +50,7 @@ function ReturnFooter:updateLabels()
             if self.labels[i] then self.labels[i]:free() end
             self.labels[i] = TextWidget:new{
                 text = text,
-                face = Font:getFace("smallinfofont", 16),
+                face = Font:getFace("smallinfofont", ReturnStyle.font_size),
                 bold = true,
                 max_width = math.floor(self.dimen.w / 3) - 2 * self.padding,
             }

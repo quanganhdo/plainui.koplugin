@@ -8,6 +8,7 @@ local GestureRange = require("ui/gesturerange")
 local ImageWidget = require("ui/widget/imagewidget")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Preview = require("modules.reader.navigation_preview")
+local ReturnStyle = require("modules.shared.return_style")
 local Screen = require("device").screen
 local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
@@ -26,7 +27,7 @@ function BottomNavigation:init()
     local w, h = Screen:getWidth(), Screen:getHeight()
     local function scale(n) return Screen:scaleBySize(n) end
     self.dimen = Geom:new{ x = 0, y = 0, w = w, h = h }
-    self.padding = scale(24)
+    self.padding = ReturnStyle.padding
     local button_w, button_h = ToolbarStyle.button_width, ToolbarStyle.button_height
     local action_padding, button_gap = ToolbarStyle.padding, ToolbarStyle.button_gap
     self.header = Geom:new{ x = 0, y = 0, w = w, h = button_h }
@@ -45,7 +46,7 @@ function BottomNavigation:init()
     self.bookmarks_button = Geom:new{ x = self.toc_button.x - button_gap - button_w,
         y = actions_y, w = button_w, h = button_h }
     self.origin_row = Geom:new{ x = self.padding, y = actions_y,
-        w = self.bookmarks_button.x - button_gap - self.padding, h = button_h }
+        w = self.bookmarks_button.x - button_gap - self.padding, h = ReturnStyle.height }
     self.chevron = Geom:new{ x = 0, y = self.origin_row.y + self.origin_row.h,
         w = w, h = h - self.origin_row.y - self.origin_row.h }
     -- The selected page is centered between the header and bar; adjacent pages extend
@@ -271,7 +272,7 @@ function BottomNavigation:paintTo(bb, x, y)
     self:drawCircle(bb, cx, cy, inner, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
         and T(_("Return to %1"), self:pageLabel(self.model.origin, true)) or "",
-        self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, 18, self.origin_row.h)
+        self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, ReturnStyle.font_size, self.origin_row.h)
     self:drawToolbarIcon(bb, "bookmarks", self.bookmarks_button)
     self:drawToolbarIcon(bb, "toc", self.toc_button)
     self:drawToolbarIcon(bb, "search", self.search_button)

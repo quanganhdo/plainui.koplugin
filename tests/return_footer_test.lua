@@ -21,6 +21,7 @@ package.loaded["device"] = { screen = {
     getHeight = function() return 800 end,
 } }
 package.loaded["ui/font"] = { getFace = function() return {} end }
+package.loaded["ui/size"] = { item = { height_big = 40 } }
 package.loaded["ffi/blitbuffer"] = { COLOR_WHITE = 0, COLOR_DARK_GRAY = 1 }
 package.loaded["ffi/util"] = { template = function(t, value) return (t:gsub("%%1", value)) end }
 package.loaded["gettext"] = function(t) return t end
@@ -50,8 +51,8 @@ test("footer uses compact labels and keeps control positions fixed", function()
     equal(footer.labels[3].text, "Stay here")
     for _, label in ipairs(footer.labels) do equal(label.bold, true) end
     local back_x, stay_x = footer.labels[1].x, footer.labels[3].x
-    equal(back_x, 12)
-    equal(stay_x + footer.labels[3]:getSize().w, 588)
+    equal(back_x, 24)
+    equal(stay_x + footer.labels[3]:getSize().w, 576)
     equal(footer.labels[2].x + footer.labels[2]:getSize().w / 2, 300)
     history.forward = nil
     footer:paintTo({ paintRect = function() end }, 0, 756)
