@@ -25,6 +25,7 @@ package.loaded["device"] = {screen = {
 }}
 package.loaded["ffi/blitbuffer"] = {COLOR_WHITE = 0, COLOR_BLACK = 1, COLOR_DARK_GRAY = 2}
 package.loaded["ui/font"] = {getFace = function() return {} end}
+package.loaded["ui/size"] = {line = {medium = 2}}
 package.loaded["ffi/util"] = {template = function(t, ...)
     for i, v in ipairs{...} do t = t:gsub("%%" .. i, tostring(v)) end
     return t

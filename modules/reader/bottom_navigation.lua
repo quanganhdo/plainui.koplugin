@@ -9,6 +9,7 @@ local ImageWidget = require("ui/widget/imagewidget")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local Preview = require("modules.reader.navigation_preview")
 local Screen = require("device").screen
+local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local T = require("ffi/util").template
@@ -234,11 +235,17 @@ function BottomNavigation:paintTo(bb, x, y)
     local percent_x = self.origin_row.x + self.origin_row.w
     self:drawText(bb, "percent", string.format("%d%%", math.floor(self.model.page * 100 / self.model.count)),
         percent_x, self.origin_row.y + Screen:scaleBySize(4), self.dimen.w - self.padding - percent_x, "right", false, 14)
-    local center = math.floor(self.dimen.w / 2)
-    local top = self.chevron.y + math.floor(self.chevron.h / 2) - Screen:scaleBySize(4)
-    for dy = 0, Screen:scaleBySize(7) do
-        bb:paintRect(center - dy, top + dy, line, line, Blitbuffer.COLOR_DARK_GRAY)
-        bb:paintRect(center + dy, top + dy, line, line, Blitbuffer.COLOR_DARK_GRAY)
+    -- Match the top toolbar's drag chevron, reflected vertically.
+    local width, height = Screen:scaleBySize(24), Screen:scaleBySize(5)
+    local left = math.floor((self.dimen.w - width) / 2)
+    local top = self.chevron.y + math.floor((self.chevron.h - height) / 2)
+    local half_width = math.floor(width / 2)
+    local stroke = math.max(1, Size.line.medium)
+    local drop = height - stroke
+    for offset = 0, half_width - 1 do
+        local y_offset = drop - math.floor(offset * drop / half_width)
+        bb:paintRect(left + offset, top + y_offset, 1, stroke, Blitbuffer.COLOR_DARK_GRAY)
+        bb:paintRect(left + width - offset - 1, top + y_offset, 1, stroke, Blitbuffer.COLOR_DARK_GRAY)
     end
 end
 
