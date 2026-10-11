@@ -15,8 +15,6 @@ The custom reader interface supports reflowable books such as EPUB. KOReader's n
 
 Copy `plainui.koplugin` into KOReader's `plugins` folder, enable the CoverBrowser plugin, and restart KOReader.
 
-The optional Battery statistics plugin adds a statistics screen when you long-press the battery icon.
-
 ## Configuration
 
 Add these optional settings to the existing table in KOReader's `settings.reader.lua`, then restart KOReader.

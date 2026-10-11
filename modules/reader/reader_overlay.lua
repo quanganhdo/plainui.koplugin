@@ -173,12 +173,20 @@ function ReaderOverlay:init()
         face = Font:getFace("smallinfofont", 16),
     }
     self.battery_widget = StatusIcon:new{
+        ignore_hold = true,
+        touch_range = function()
+            if self.battery_widget.visible then return self.battery_slot.dimen end
+        end,
         icon_file = StatusIndicators.getBatteryIconPath(),
         icon_width = battery_icon_width,
         icon_height = battery_icon_height,
         visible = battery_state.available,
         width = battery_icon_width,
         height = status_height,
+        callback = function()
+            StatusIndicators.showBatteryMenu(self.battery_slot.dimen)
+            self:refreshStatus()
+        end,
     }
     self.battery_percentage_widget = TextWidget:new{
         text = battery_percentage_text,

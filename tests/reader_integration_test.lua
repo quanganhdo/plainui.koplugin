@@ -249,6 +249,17 @@ test("shared status indicators map combined battery and Wi-Fi icon states", func
         assertEqual(battery.charged, false)
         assertEqual(battery.charging, true)
         assertEqual(StatusIndicators.getBatteryPercentageText(), "50%")
+        local plugins = stubs["pluginloader"]
+        plugins.isPluginLoaded = function(self, name)
+            assertEqual(name, "batterystat")
+            return self.loaded_plugins[name] ~= nil
+        end
+        assertEqual(StatusIndicators.hasBatteryStatistics(), false)
+        plugins.loaded_plugins = {}
+        assertEqual(StatusIndicators.hasBatteryStatistics(), false)
+        plugins.loaded_plugins.batterystat = {}
+        assertEqual(StatusIndicators.hasBatteryStatistics(), true)
+        plugins.loaded_plugins.batterystat = nil
         assertEqual(StatusIndicators.getBatteryIconName(), "battery-vertical-charging")
         assertTruthy(StatusIndicators.getBatteryIconPath():find(
             "/icons/tabler/battery-vertical-charging.svg",

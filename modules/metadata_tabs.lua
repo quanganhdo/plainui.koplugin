@@ -476,6 +476,7 @@ function MetadataTabsTitleBar:init()
     self.battery_icon_file = StatusIndicators.getBatteryIconPath()
     self.battery_available = battery_state.available
     self.battery_button = StatusIcon:new{
+        ignore_hold = true,
         touch_range = statusTouchRange("battery_button"),
         icon_file = self.battery_icon_file,
         icon_width = self.status_battery_icon_width,
@@ -483,8 +484,8 @@ function MetadataTabsTitleBar:init()
         visible = self.battery_available,
         width = self.battery_width,
         height = self.tab_label_height,
-        hold_callback = function()
-            StatusIndicators.showBatteryInfo()
+        callback = function()
+            StatusIndicators.showBatteryMenu(self.battery_button.touch_range())
             self:updateStatusIndicators()
         end,
     }

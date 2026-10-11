@@ -175,11 +175,20 @@ function StatusIndicators.getWidths(font_face, font_size, padding_h, icon_widths
     }
 end
 
+function StatusIndicators.hasBatteryStatistics()
+    return PluginLoader.loaded_plugins ~= nil and PluginLoader:isPluginLoaded("batterystat")
+end
+
+function StatusIndicators.showBatteryMenu(anchor)
+    if not Device:hasBattery() then return end
+    return require("modules.shared.battery_menu").show(anchor)
+end
+
 function StatusIndicators.showBatteryInfo()
     if not Device:hasBattery() then
         return
     end
-    if PluginLoader.loaded_plugins and PluginLoader:isPluginLoaded("batterystat") then
+    if StatusIndicators.hasBatteryStatistics() then
         UIManager:broadcastEvent(Event:new("ShowBatteryStatistics"))
         return
     end
