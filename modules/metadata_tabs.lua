@@ -406,8 +406,19 @@ function MetadataTabsTitleBar:init()
     self.wifi_width = status_widths.wifi
     self.battery_width = status_widths.battery
     self.status_width = self.night_mode_width + self.frontlight_width + self.wifi_width + self.battery_width + 3 * self.status_gap
+    local function statusTouchRange(button_key)
+        return function()
+            local button = self[button_key]
+            if not button or not button.visible then return end
+            return Geom:new{
+                x = button.dimen.x, y = self.dimen.y,
+                w = button.dimen.w, h = self.dimen.h,
+            }
+        end
+    end
     self.night_mode_icon_file = StatusIndicators.getNightModeIconPath()
     self.night_mode_button = StatusIcon:new{
+        touch_range = statusTouchRange("night_mode_button"),
         icon_file = self.night_mode_icon_file,
         icon_width = self.status_icon_size,
         icon_height = self.status_icon_size,
@@ -424,6 +435,7 @@ function MetadataTabsTitleBar:init()
     self.frontlight_icon_file = StatusIndicators.getFrontlightIconPath()
     self.frontlight_available = frontlight_state.available
     self.frontlight_button = StatusIcon:new{
+        touch_range = statusTouchRange("frontlight_button"),
         icon_file = self.frontlight_icon_file,
         icon_width = self.status_icon_size,
         icon_height = self.status_icon_size,
@@ -446,6 +458,7 @@ function MetadataTabsTitleBar:init()
     self.wifi_icon_file = StatusIndicators.getWifiIconPath()
     self.wifi_available = wifi_state.available
     self.wifi_button = StatusIcon:new{
+        touch_range = statusTouchRange("wifi_button"),
         icon_file = self.wifi_icon_file,
         icon_width = self.status_wifi_icon_size,
         icon_height = self.status_wifi_icon_size,
@@ -467,6 +480,7 @@ function MetadataTabsTitleBar:init()
     self.battery_icon_file = StatusIndicators.getBatteryIconPath()
     self.battery_available = battery_state.available
     self.battery_button = StatusIcon:new{
+        touch_range = statusTouchRange("battery_button"),
         icon_file = self.battery_icon_file,
         icon_width = self.status_battery_icon_width,
         icon_height = self.status_battery_icon_height,

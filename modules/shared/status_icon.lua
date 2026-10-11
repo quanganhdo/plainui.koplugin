@@ -28,15 +28,16 @@ function StatusIcon:init()
         self.image,
     }
     if self.callback or self.hold_callback then
+        local touch_range = self.touch_range or self.dimen
         self.ges_events = {
             TapStatusIcon = {
-                GestureRange:new{ ges = "tap", range = self.dimen },
+                GestureRange:new{ ges = "tap", range = touch_range },
             },
             HoldStatusIcon = {
-                GestureRange:new{ ges = "hold", range = self.dimen },
+                GestureRange:new{ ges = "hold", range = touch_range },
             },
             HoldReleaseStatusIcon = {
-                GestureRange:new{ ges = "hold_release", range = self.dimen },
+                GestureRange:new{ ges = "hold_release", range = touch_range },
             },
         }
     end
