@@ -6,40 +6,39 @@
   <meta name="description" content="A concise guide to Plain UI for KOReader: browse your library, customize typography, preview pages, and reach your reading tools.">
   <meta name="color-scheme" content="light dark">
   <title>Plain UI — User guide</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="style.css?v=2">
 </head>
 <body>
   <a class="skip-link" href="#guide">Skip to guide</a>
   <div class="layout">
     <aside class="sidebar">
-      <a class="brand" href="#top"><span class="brand-mark" aria-hidden="true">p.</span>Plain UI</a>
-      <p class="sidebar-label">USER GUIDE</p>
+      <a class="brand" href="#top">Plain UI</a>
+      <p class="sidebar-label">Contents</p>
       <nav aria-label="Contents">
-        <a href="#start"><span>01</span>Get started</a>
-        <a href="#library"><span>02</span>Your library</a>
-        <a href="#reader"><span>03</span>Reading tools</a>
-        <a href="#typography"><span>04</span>Typography</a>
-        <a href="#navigation"><span>05</span>Navigation</a>
-        <a href="#stats"><span>06</span>Reading stats</a>
-        <a href="#device"><span>07</span>Device controls</a>
-        <a href="#help"><span>08</span>Good to know</a>
+        <a href="#start">Get started</a>
+        <a href="#library">Your library</a>
+        <a href="#reader">Reading tools</a>
+        <a href="#typography">Typography</a>
+        <a href="#navigation">Navigation</a>
+        <a href="#stats">Reading stats</a>
+        <a href="#device">Device controls</a>
+        <a href="#help">Good to know</a>
       </nav>
       <a class="source-link" href="https://github.com/quanganhdo/plainui.koplugin">Project on GitHub <span aria-hidden="true">↗</span></a>
     </aside>
 
     <main id="guide">
       <header id="top" class="intro">
-        <p class="eyebrow">A SMALLER INTERFACE FOR KOREADER</p>
-        <h1>Plain UI.<br>A short user guide.</h1>
-        <p class="lead">Find your next book, make the page comfortable, and get back to reading.</p>
-        <div class="gesture-map" aria-label="The two reader gestures">
-          <a href="#reader"><span class="gesture-arrow" aria-hidden="true">↓</span><span><strong>Swipe down</strong><small>Reading tools</small></span></a>
-          <a href="#navigation"><span class="gesture-arrow" aria-hidden="true">↑</span><span><strong>Swipe up from the bottom</strong><small>Navigation &amp; page previews</small></span></a>
-        </div>
+        <h1>Plain UI user guide</h1>
+        <p>A guide to the library and reading controls in Plain UI for KOReader. Select any screenshot to view it at full size.</p>
+        <ul class="gestures">
+          <li><strong>Swipe down</strong> while reading for <a href="#reader">reading tools</a>.</li>
+          <li><strong>Swipe up from the bottom edge</strong> for <a href="#navigation">navigation and page previews</a>.</li>
+        </ul>
       </header>
 
       <section id="start" aria-labelledby="start-title">
-        <div class="section-heading"><span class="section-number">01</span><h2 id="start-title">Get started</h2></div>
+        <div class="section-heading"><h2 id="start-title">Get started</h2></div>
         <ol class="steps">
           <li>Copy <code>plainui.koplugin</code> into KOReader’s <code>plugins</code> folder.</li>
           <li>Enable KOReader’s <strong>CoverBrowser</strong> plugin and restart KOReader.</li>
@@ -48,7 +47,7 @@
       </section>
 
       <section id="library" aria-labelledby="library-title">
-        <div class="section-heading"><span class="section-number">02</span><h2 id="library-title">Your library</h2></div>
+        <div class="section-heading"><h2 id="library-title">Your library</h2></div>
         <p>Browse <strong>Books, Series, Authors, and Tags</strong> in CoverBrowser’s Mosaic cover grid or Detailed list view.</p>
         <dl>
           <div><dt>Filter &amp; sort</dt><dd>Tap the selected tab again. Choose All, Unread, Reading, or Finished. Sort Books by Last read, Title, or Progress; sort metadata groups by name or number of books. Books can also follow KOReader’s settings or exclude folders.</dd></div>
@@ -56,10 +55,29 @@
           <div><dt>Read the covers</dt><dd>Badges show reading progress, finished status, group book counts, and series position where available.</dd></div>
         </dl>
         <p class="tip"><strong>Last read</strong> follows reading history, newest first. Books without history appear last.</p>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/01-library-grid.png" aria-label="View full-size screenshot: Library cover grid with Books, Series, Authors and Tags tabs"><img src="screenshots/01-library-grid.png" alt="Library cover grid with Books, Series, Authors and Tags tabs" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Mosaic view with reading-progress and finished badges.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/02-library-list.png" aria-label="View full-size screenshot: Library detailed list showing book titles and authors"><img src="screenshots/02-library-list.png" alt="Library detailed list showing book titles and authors" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Detailed view with titles, authors, and progress.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/03-browse-authors.png" aria-label="View full-size screenshot: Authors tab listing author names and book counts"><img src="screenshots/03-browse-authors.png" alt="Authors tab listing author names and book counts" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Authors grouped with their book counts.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/04-browse-tags.png" aria-label="View full-size screenshot: Tags tab listing metadata groups and book counts"><img src="screenshots/04-browse-tags.png" alt="Tags tab listing metadata groups and book counts" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Tags extracted from cached book metadata.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="reader" aria-labelledby="reader-title">
-        <div class="section-heading"><span class="section-number">03</span><h2 id="reader-title">Reading tools</h2></div>
+        <div class="section-heading"><h2 id="reader-title">Reading tools</h2></div>
         <p>Swipe down while reading to open the toolbar.</p>
         <dl>
           <div><dt>Library &amp; recent books</dt><dd>File Manager returns to your library. The history icon beside it lists up to three other recent books; View history opens the full list.</dd></div>
@@ -68,23 +86,46 @@
         </dl>
         <p class="note">After disabling touch, put your e-reader to sleep and wake it to restore touch. Follow the confirmation dialog’s page-turn instructions.</p>
         <p>Tap outside the toolbar or swipe up to close it. The top chevron opens KOReader’s original menu.</p>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/05-reader-toolbar.png" aria-label="View full-size screenshot: Reader toolbar with File Manager, history, lighting, dark mode, font and More controls"><img src="screenshots/05-reader-toolbar.png" alt="Reader toolbar with File Manager, history, lighting, dark mode, font and More controls" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Swipe down to open the reading toolbar.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/06-recent-books.png" aria-label="View full-size screenshot: Recent books popup with three books and View history"><img src="screenshots/06-recent-books.png" alt="Recent books popup with three books and View history" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>The history icon opens recent books and the full history.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="typography" aria-labelledby="typography-title">
-        <div class="section-heading"><span class="section-number">04</span><h2 id="typography-title">Make the page yours</h2></div>
+        <div class="section-heading"><h2 id="typography-title">Typography</h2></div>
         <p>Tap <strong>Font</strong> to adjust the typeface, size, weight, line spacing, margins, and alignment. Tap the font name to browse typeface previews.</p>
-        <div class="profile-example" aria-label="Example profile tabs; an asterisk marks a customized profile">
-          <span>Everyday</span><span class="example-selected">Custom 1 <b>*</b></span><span>Custom 2</span>
-        </div>
         <p>Choose one of three profiles: <strong>Everyday, Custom 1, or Custom 2</strong>. Each book remembers its profile and adjustments automatically. An asterisk marks a customized profile.</p>
         <dl>
           <div><dt>Reset</dt><dd>Restore the selected profile’s saved settings for this book.</dd></div>
           <div><dt>Save profile</dt><dd>Name and save the preset. Other books using it pick up the new settings when opened, unless customized. Saving Everyday also updates KOReader’s typography defaults.</dd></div>
         </dl>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/07-typography-profiles.png" aria-label="View full-size screenshot: Typography panel showing Everyday, Custom 1 and Custom 2 profiles and adjustment sliders"><img src="screenshots/07-typography-profiles.png" alt="Typography panel showing Everyday, Custom 1 and Custom 2 profiles and adjustment sliders" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Three profiles with font, spacing, margin, and alignment controls.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/08-book-specific-typography.png" aria-label="View full-size screenshot: Custom 1 profile marked with an asterisk and an enabled Reset button"><img src="screenshots/08-book-specific-typography.png" alt="Custom 1 profile marked with an asterisk and an enabled Reset button" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>An asterisk marks settings customized for this book.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/09-save-profile.png" aria-label="View full-size screenshot: Save profile dialog explaining which books will use the saved settings"><img src="screenshots/09-save-profile.png" alt="Save profile dialog explaining which books will use the saved settings" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Save profile updates the preset for books without custom settings.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="navigation" aria-labelledby="navigation-title">
-        <div class="section-heading"><span class="section-number">05</span><h2 id="navigation-title">Explore without losing your place</h2></div>
+        <div class="section-heading"><h2 id="navigation-title">Navigation</h2></div>
         <p>Swipe up from the bottom edge to open <strong>Navigation</strong>.</p>
         <dl>
           <div><dt>Browse first</dt><dd>Drag or tap the slider, swipe the preview, or tap a neighboring page. Your reading position stays put until you tap the center preview to jump.</dd></div>
@@ -93,27 +134,52 @@
         </dl>
         <p>Close with the top-right ×. The bottom chevron opens KOReader’s original document settings.</p>
         <p class="tip"><strong>After a jump:</strong> the footer’s Back/Forward page links retrace your route. Stay here, or a tap outside the footer, dismisses it while keeping navigation history.</p>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/10-navigation-preview.png" aria-label="View full-size screenshot: Navigation view with three page previews, bookmark, chapter arrows, slider and Return to p8"><img src="screenshots/10-navigation-preview.png" alt="Navigation view with three page previews, bookmark, chapter arrows, slider and Return to p8" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Browse pages, bookmark the preview, or return to your starting page.</figcaption>
+          </figure>
+          <figure>
+            <a href="screenshots/11-return-controls.png" aria-label="View full-size screenshot: Reading footer showing previous and next page links and Stay here"><img src="screenshots/11-return-controls.png" alt="Reading footer showing previous and next page links and Stay here" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>After a jump, use Back/Forward or Stay here.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="stats" aria-labelledby="stats-title">
-        <div class="section-heading"><span class="section-number">06</span><h2 id="stats-title">See your reading pace</h2></div>
+        <div class="section-heading"><h2 id="stats-title">Reading stats</h2></div>
         <p>The Reading stats popup shows chapter time remaining, next-chapter reading time, book progress, time spent and remaining, and your reading pace.</p>
         <p class="tip"><strong>Tap a time value</strong> to switch between decimal hours and hours/minutes: <code>1.5 hours</code> ↔ <code>1h30m</code>.</p>
         <p>Estimates depend on the reading history collected by KOReader’s Reading statistics plugin.</p>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/reading-stats.png" aria-label="View full-size screenshot: Reading statistics panel showing chapter and book time estimates, progress and reading pace"><img src="screenshots/reading-stats.png" alt="Reading statistics panel showing chapter and book time estimates, progress and reading pace" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Chapter estimates, book progress, and reading pace.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="device" aria-labelledby="device-title">
-        <div class="section-heading"><span class="section-number">07</span><h2 id="device-title">Keep device controls close</h2></div>
+        <div class="section-heading"><h2 id="device-title">Device controls</h2></div>
         <p>These controls are available in the library and reader when supported by your device.</p>
         <dl>
           <div><dt>Lighting &amp; dark mode</dt><dd>Open the native brightness dialog or toggle dark mode.</dd></div>
           <div><dt>Wi-Fi</dt><dd>Tap the icon to turn Wi-Fi on/off or Choose network. Choosing a network turns Wi-Fi on when needed.</dd></div>
           <div><dt>Battery</dt><dd>Tap the icon for its percentage. View battery stats appears when KOReader’s Battery statistics plugin is enabled.</dd></div>
         </dl>
+
+        <div class="screenshots">
+          <figure>
+            <a href="screenshots/battery-menu.png" aria-label="View full-size screenshot: Library battery menu with Battery 61 percent and View battery stats"><img src="screenshots/battery-menu.png" alt="Library battery menu with Battery 61 percent and View battery stats" width="1272" height="1696" loading="lazy" decoding="async"></a>
+            <figcaption>Tap the battery icon for its percentage and battery stats.</figcaption>
+          </figure>
+        </div>
       </section>
 
       <section id="help" aria-labelledby="help-title">
-        <div class="section-heading"><span class="section-number">08</span><h2 id="help-title">Good to know</h2></div>
+        <div class="section-heading"><h2 id="help-title">Good to know</h2></div>
         <dl>
           <div><dt>Missing authors or tags?</dt><dd>The metadata views use CoverBrowser’s cached book information. Extract/cache book metadata with CoverBrowser, then reopen the view.</dd></div>
           <div><dt>Need another KOReader setting?</dt><dd>The edge chevrons open the native menus. For KOReader’s wider features, use its <a href="https://koreader.rocks/user_guide/">user guide</a>.</dd></div>
