@@ -186,6 +186,16 @@ function ReaderOverlay:init()
         visible = wifi_state.available,
         width = status_slot_width,
         height = status_height,
+        callback = function()
+            StatusIndicators.toggleWifi(function()
+                self:refreshStatus()
+            end)
+        end,
+        hold_callback = function()
+            StatusIndicators.showWifiNetworks(function()
+                self:refreshStatus()
+            end)
+        end,
     }
     self.battery_group = HorizontalGroup:new{
         allow_mirroring = false,
