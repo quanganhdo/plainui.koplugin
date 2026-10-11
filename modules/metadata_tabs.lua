@@ -482,9 +482,9 @@ function MetadataTabsTitleBar:init()
         align = "bottom",
         allow_mirroring = false,
     }
-    table.insert(status_row_items, self.night_mode_button)
-    table.insert(status_row_items, HorizontalSpan:new{ width = self.status_gap })
     table.insert(status_row_items, self.frontlight_button)
+    table.insert(status_row_items, HorizontalSpan:new{ width = self.status_gap })
+    table.insert(status_row_items, self.night_mode_button)
     table.insert(status_row_items, HorizontalSpan:new{ width = self.status_gap })
     table.insert(status_row_items, self.wifi_button)
     table.insert(status_row_items, HorizontalSpan:new{ width = self.status_gap })
@@ -961,8 +961,8 @@ function MetadataTabsTitleBar:generateHorizontalLayout()
         self.authors_button,
         self.tags_button,
     }
-    table.insert(row, self.night_mode_button)
     table.insert(row, self.frontlight_button)
+    table.insert(row, self.night_mode_button)
     table.insert(row, self.wifi_button)
     table.insert(row, self.battery_button)
     return {
@@ -978,8 +978,8 @@ function MetadataTabsTitleBar:generateVerticalLayout()
         { self.authors_button },
         { self.tags_button },
     }
-    table.insert(layout, { self.night_mode_button })
     table.insert(layout, { self.frontlight_button })
+    table.insert(layout, { self.night_mode_button })
     table.insert(layout, { self.wifi_button })
     table.insert(layout, { self.battery_button })
     return layout
