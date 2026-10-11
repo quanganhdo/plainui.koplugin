@@ -279,12 +279,14 @@ end
 
 function Controller:showTableOfContents()
     self:closeReadingStatsPopup()
+    self:closeBottomNavigation()
     self:closeOverlay()
     self.ui:handleEvent(Event:new("ShowToc"))
 end
 
 function Controller:showFulltextSearch()
     self:closeReadingStatsPopup()
+    self:closeBottomNavigation()
     self:closeOverlay()
     self.ui:handleEvent(Event:new("ShowFulltextSearchInput"))
 end

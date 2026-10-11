@@ -22,6 +22,7 @@ local Size = require("ui/size")
 local StatusIcon = require("modules.shared.status_icon")
 local StatusIndicators = require("modules.shared.status_indicators")
 local TextWidget = require("ui/widget/textwidget")
+local ToolbarStyle = require("modules.shared.toolbar_style")
 local TopContainer = require("ui/widget/container/topcontainer")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
@@ -106,10 +107,10 @@ local ReaderOverlay = InputContainer:extend{
 function ReaderOverlay:init()
     local screen_width = Screen:getWidth()
     local screen_height = Screen:getHeight()
-    local horizontal_padding = Size.padding.large
+    local horizontal_padding = ToolbarStyle.padding
     local content_width = screen_width - 2 * horizontal_padding
     local status_height = Size.item.height_default
-    local action_height = Size.item.height_big
+    local action_height = ToolbarStyle.button_height
     local status_padding_h = Screen:scaleBySize(7)
     local status_gap = Screen:scaleBySize(12)
     local wifi_icon_size = Screen:scaleBySize(20)
@@ -237,9 +238,9 @@ function ReaderOverlay:init()
             self.plugin:backToFileManager()
         end,
     }
-    local action_button_width = Screen:scaleBySize(52)
-    local action_button_gap = Screen:scaleBySize(4)
-    local action_icon_size = Screen:scaleBySize(28)
+    local action_button_width = ToolbarStyle.button_width
+    local action_button_gap = ToolbarStyle.button_gap
+    local action_icon_size = ToolbarStyle.icon_size
     local action_icon_dir = self.plugin.path .. "/icons/tabler/"
     local typography_button = FileIconButton:new{
         action_id = "typography",
@@ -267,36 +268,12 @@ function ReaderOverlay:init()
             end,
         }
     end
-    local toc_button = FileIconButton:new{
-        action_id = "toc",
-        icon_file = action_icon_dir .. "list-details.svg",
-        width = action_button_width,
-        height = action_height,
-        icon_width = action_icon_size,
-        icon_height = action_icon_size,
-        callback = function()
-            self.plugin:showTableOfContents()
-        end,
-    }
-    local search_button = FileIconButton:new{
-        action_id = "search",
-        icon_file = action_icon_dir .. "search.svg",
-        width = action_button_width,
-        height = action_height,
-        icon_width = action_icon_size,
-        icon_height = action_icon_size,
-        callback = function()
-            self.plugin:showFulltextSearch()
-        end,
-    }
     self.toolbar_action_buttons = {
         typography_button,
     }
     if stats_button then
         table.insert(self.toolbar_action_buttons, stats_button)
     end
-    table.insert(self.toolbar_action_buttons, toc_button)
-    table.insert(self.toolbar_action_buttons, search_button)
     local action_control_children = {
         allow_mirroring = false,
         typography_button,
@@ -305,10 +282,6 @@ function ReaderOverlay:init()
         table.insert(action_control_children, HorizontalSpan:new{ width = action_button_gap })
         table.insert(action_control_children, stats_button)
     end
-    table.insert(action_control_children, HorizontalSpan:new{ width = action_button_gap })
-    table.insert(action_control_children, toc_button)
-    table.insert(action_control_children, HorizontalSpan:new{ width = action_button_gap })
-    table.insert(action_control_children, search_button)
     local action_controls = HorizontalGroup:new(action_control_children)
     local action_spacer_width = math.max(
         0,

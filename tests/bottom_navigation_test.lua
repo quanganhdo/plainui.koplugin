@@ -25,7 +25,7 @@ package.loaded["device"] = {screen = {
 }}
 package.loaded["ffi/blitbuffer"] = {COLOR_WHITE = 0, COLOR_BLACK = 1, COLOR_DARK_GRAY = 2}
 package.loaded["ui/font"] = {getFace = function() return {} end}
-package.loaded["ui/size"] = {line = {medium = 2}}
+package.loaded["ui/size"] = {line = {medium = 2}, item = {height_big = 40}, padding = {large = 10}}
 package.loaded["ffi/util"] = {template = function(t, ...)
     for i, v in ipairs{...} do t = t:gsub("%%" .. i, tostring(v)) end
     return t
@@ -38,8 +38,11 @@ package.loaded["ui/widget/textwidget"] = {new = function(_, t)
     return t
 end}
 package.loaded["ui/widget/imagewidget"] = {new = function(_, t)
-    function t:getSize() return {w = self.image.w, h = self.image.h} end
-    function t:paintTo(bb, x, y) bb.calls[#bb.calls + 1] = {kind = "image", x = x, y = y, w = self.image.w, h = self.image.h} end
+    function t:getSize() return self.file and {w = self.width, h = self.height} or {w = self.image.w, h = self.image.h} end
+    function t:paintTo(bb, x, y)
+        local size = self:getSize()
+        bb.calls[#bb.calls + 1] = {kind = self.file and "icon" or "image", x = x, y = y, w = size.w, h = size.h}
+    end
     function t:free() self.freed = true end
     return t
 end}
@@ -70,8 +73,10 @@ local function fixture(deferred, link)
             cancelPageThumbnailRequests = function() end,
         },
     }
-    local plugin = {ui = ui, closeBottomNavigation = function(self) self.closed = true end,
-        commitNavigationPreview = function(self, page) self.committed = page end}
+    local plugin = {ui = ui, path = ".", closeBottomNavigation = function(self) self.closed = true end,
+        commitNavigationPreview = function(self, page) self.committed = page end,
+        showTableOfContents = function(self) self.toc_opened = true end,
+        showFulltextSearch = function(self) self.search_opened = true end}
     local widget = Widget:new{plugin = plugin}
     local bb = {calls = {}}
     function bb:copy()
@@ -192,7 +197,7 @@ test("carousel images fit inside their borders and the selected card stays cente
     truthy(border_index > image_index, "Image must not overwrite page border")
     truthy(image.x > border.x and image.y > border.y)
     truthy(image.x + image.w < border.x + border.w and image.y + image.h < border.y + border.h)
-    equal(w.preview_rect.y, math.floor((w.bar.y - w.preview_rect.h) / 2))
+    equal(w.preview_rect.y, w.header.h + math.floor((w.bar.y - w.header.h - w.preview_rect.h) / 2))
     truthy(w.neighbor_rects[-1].x < 0)
     truthy(w.neighbor_rects[1].x + w.neighbor_rects[1].w > w.dimen.w)
     truthy(w.neighbor_images[-1] and w.neighbor_images[1])
@@ -200,6 +205,32 @@ test("carousel images fit inside their borders and the selected card stays cente
     w:onCloseWidget()
     equal(left.freed, true)
     equal(right.freed, true)
+end)
+
+test("bottom actions share toolbar sizing and open TOC or Search without a preview jump", function()
+    local w, bb, plugin, _, _, tap = fixture()
+    w:onShow()
+    w:paintTo(bb, 0, 0)
+    local style = require("modules.shared.toolbar_style")
+    for _, r in ipairs{w.previous_chapter_button, w.next_chapter_button, w.toc_button, w.search_button} do
+        equal(r.w, style.button_width)
+        equal(r.h, style.button_height)
+    end
+    equal(w.toc_button.y, w.origin_row.y)
+    equal(w.search_button.y, w.origin_row.y)
+    truthy(w.origin_row.x + w.origin_row.w < w.toc_button.x)
+    equal(w.labels.percent, nil)
+    equal(w.icons.toc.width, style.icon_size)
+    equal(w.icons.search.height, style.icon_size)
+    tap(w.toc_button)
+    equal(plugin.toc_opened, true)
+    tap(w.search_button)
+    equal(plugin.search_opened, true)
+    equal(plugin.committed, nil)
+    equal(w.model.page, w.model.origin)
+    local icon = w.icons.toc
+    w:onCloseWidget()
+    equal(icon.freed, true)
 end)
 
 test("chapter buttons navigate from preview page without committing a reading jump", function()

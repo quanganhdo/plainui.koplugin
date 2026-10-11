@@ -11,6 +11,7 @@ local Preview = require("modules.reader.navigation_preview")
 local Screen = require("device").screen
 local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
+local ToolbarStyle = require("modules.shared.toolbar_style")
 local UIManager = require("ui/uimanager")
 local T = require("ffi/util").template
 local _ = require("gettext")
@@ -26,22 +27,31 @@ function BottomNavigation:init()
     local function scale(n) return Screen:scaleBySize(n) end
     self.dimen = Geom:new{ x = 0, y = 0, w = w, h = h }
     self.padding = scale(24)
-    self.bar = Geom:new{ x = 0, y = h - scale(136), w = w, h = scale(136) }
-    self.chapter_row = Geom:new{ x = 0, y = self.bar.y, w = w, h = scale(36) }
-    self.previous_chapter_button = Geom:new{ x = 0, y = self.bar.y, w = scale(64), h = scale(36) }
-    self.next_chapter_button = Geom:new{ x = w - scale(64), y = self.bar.y, w = scale(64), h = scale(36) }
+    local button_w, button_h = ToolbarStyle.button_width, ToolbarStyle.button_height
+    local action_padding, button_gap = ToolbarStyle.padding, ToolbarStyle.button_gap
+    self.header = Geom:new{ x = 0, y = 0, w = w, h = button_h }
+    local bar_h = 2 * button_h + scale(40) + scale(32)
+    self.bar = Geom:new{ x = 0, y = h - bar_h, w = w, h = bar_h }
+    self.chapter_row = Geom:new{ x = 0, y = self.bar.y, w = w, h = button_h }
+    self.previous_chapter_button = Geom:new{ x = action_padding, y = self.bar.y, w = button_w, h = button_h }
+    self.next_chapter_button = Geom:new{ x = w - action_padding - button_w, y = self.bar.y, w = button_w, h = button_h }
     self.slider = Geom:new{ x = self.padding, y = self.chapter_row.y + self.chapter_row.h,
         w = w - 2 * self.padding, h = scale(40) }
-    self.origin_row = Geom:new{ x = self.padding, y = self.slider.y + self.slider.h,
-        w = math.floor((w - 2 * self.padding) * 0.65), h = scale(28) }
+    local actions_y = self.slider.y + self.slider.h
+    self.search_button = Geom:new{ x = w - action_padding - button_w,
+        y = actions_y, w = button_w, h = button_h }
+    self.toc_button = Geom:new{ x = self.search_button.x - button_gap - button_w,
+        y = actions_y, w = button_w, h = button_h }
+    self.origin_row = Geom:new{ x = self.padding, y = actions_y,
+        w = self.toc_button.x - button_gap - self.padding, h = button_h }
     self.chevron = Geom:new{ x = 0, y = self.origin_row.y + self.origin_row.h,
         w = w, h = h - self.origin_row.y - self.origin_row.h }
-    -- The selected page is centered above the bar; adjacent pages extend
+    -- The selected page is centered between the header and bar; adjacent pages extend
     -- beyond the screen edges, like Kindle's single-page carousel.
     local card_w = math.floor(w * 0.68)
-    local card_h = math.min(math.floor(h * 0.66), self.bar.y - scale(48))
+    local card_h = math.min(math.floor(h * 0.66), self.bar.y - self.header.h - scale(48))
     self.preview_rect = Geom:new{ x = math.floor((w - card_w) / 2),
-        y = math.floor((self.bar.y - card_h) / 2), w = card_w, h = card_h }
+        y = self.header.h + math.floor((self.bar.y - self.header.h - card_h) / 2), w = card_w, h = card_h }
     local r = self.preview_rect
     self.preview_image_rect = Geom:new{ x = r.x + scale(24), y = r.y + scale(28),
         w = r.w - scale(48), h = r.h - scale(68) }
@@ -60,6 +70,17 @@ function BottomNavigation:init()
     self.carousel_rect = Geom:new{ x = 0, y = r.y, w = w, h = r.h }
     self.neighbor_images = {}
     self.labels = {}
+    self.icons = {}
+    for id, file in pairs{
+        previous_chapter = "player-skip-back.svg", next_chapter = "player-skip-forward.svg",
+        toc = "list-details.svg", search = "search.svg",
+    } do
+        self.icons[id] = ImageWidget:new{
+            file = self.plugin.path .. "/icons/tabler/" .. file,
+            width = ToolbarStyle.icon_size, height = ToolbarStyle.icon_size,
+            alpha = false, is_icon = true,
+        }
+    end
     self.model = Preview.new{
         page = self.plugin.ui:getCurrentPage(),
         count = self.plugin.ui.document:getPageCount(),
@@ -172,15 +193,11 @@ function BottomNavigation:chapterDestination(direction)
     return toc:getNextChapter(self.model.page)
 end
 
-function BottomNavigation:drawChapterArrow(bb, cx, cy, direction, enabled)
-    local size = Screen:scaleBySize(6)
-    local line = math.max(1, Screen:scaleBySize(1))
-    local color = enabled and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY
-    for dx = 0, size do
-        local half = size - dx
-        bb:paintRect(cx + direction * dx, cy - half, line, 2 * half + 1, color)
-    end
-    bb:paintRect(cx + direction * (size + line + 1), cy - size, line, 2 * size + 1, color)
+function BottomNavigation:drawToolbarIcon(bb, id, rect, enabled)
+    local icon = self.icons[id]
+    icon.dim = enabled == false
+    icon:paintTo(bb, rect.x + math.floor((rect.w - ToolbarStyle.icon_size) / 2),
+        rect.y + math.floor((rect.h - ToolbarStyle.icon_size) / 2))
 end
 
 function BottomNavigation:paintPage(bb, rect, image)
@@ -229,13 +246,12 @@ function BottomNavigation:paintTo(bb, x, y)
 
     bb:paintRect(self.bar.x, self.bar.y, self.bar.w, self.bar.h, Blitbuffer.COLOR_WHITE)
     bb:paintRect(self.bar.x, self.bar.y, self.bar.w, line, Blitbuffer.COLOR_BLACK)
-    local chapter_y = self.chapter_row.y + math.floor(self.chapter_row.h / 2)
-    self:drawChapterArrow(bb, self.padding + Screen:scaleBySize(10), chapter_y, -1, self:chapterDestination(-1) ~= nil)
-    self:drawChapterArrow(bb, self.dimen.w - self.padding - Screen:scaleBySize(10), chapter_y, 1, self:chapterDestination(1) ~= nil)
+    self:drawToolbarIcon(bb, "previous_chapter", self.previous_chapter_button, self:chapterDestination(-1) ~= nil)
+    self:drawToolbarIcon(bb, "next_chapter", self.next_chapter_button, self:chapterDestination(1) ~= nil)
     local toc = self.plugin.ui.toc
     local title = toc and toc:getTocTitleByPage(self.model.page) or ""
     if title == "" then title = self.plugin.ui.document:getProps().title or "" end
-    local title_x = self.previous_chapter_button.w
+    local title_x = self.previous_chapter_button.x + self.previous_chapter_button.w + ToolbarStyle.button_gap
     local title_w = self.dimen.w - 2 * title_x
     self:drawText(bb, "chapter", title, title_x, self.chapter_row.y, title_w, "center", true, 16, self.chapter_row.h)
 
@@ -252,10 +268,9 @@ function BottomNavigation:paintTo(bb, x, y)
     self:drawCircle(bb, cx, cy, inner, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
         and "← " .. self:pageLabel(self.model.origin) or "",
-        self.origin_row.x, self.origin_row.y + Screen:scaleBySize(4), self.origin_row.w, "left", true, 14)
-    local percent_x = self.origin_row.x + self.origin_row.w
-    self:drawText(bb, "percent", string.format("%d%%", math.floor(self.model.page * 100 / self.model.count)),
-        percent_x, self.origin_row.y + Screen:scaleBySize(4), self.dimen.w - self.padding - percent_x, "right", false, 14)
+        self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, 18, self.origin_row.h)
+    self:drawToolbarIcon(bb, "toc", self.toc_button)
+    self:drawToolbarIcon(bb, "search", self.search_button)
     -- Match the top toolbar's drag chevron, reflected vertically.
     local width, height = Screen:scaleBySize(24), Screen:scaleBySize(5)
     local left = math.floor((self.dimen.w - width) / 2)
@@ -296,6 +311,8 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     if pos:intersectWith(self.chevron) then self.plugin:showFullConfigMenu()
     elseif pos:intersectWith(self.slider) then self:selectAt(pos.x, true)
     elseif pos:intersectWith(self.close_button) then self.plugin:closeBottomNavigation()
+    elseif pos:intersectWith(self.toc_button) then self.plugin:showTableOfContents()
+    elseif pos:intersectWith(self.search_button) then self.plugin:showFulltextSearch()
     elseif pos:intersectWith(self.previous_chapter_button) then
         local page = self:chapterDestination(-1)
         if page then self.model:setPage(page, true) end
@@ -358,6 +375,8 @@ function BottomNavigation:onCloseWidget()
     self.model:close()
     self:clearImage()
     self:clearNeighborImages()
+    for _, icon in pairs(self.icons) do icon:free() end
+    self.icons = {}
     for _, widget in pairs(self.labels) do widget:free() end
     self.labels = {}
     if self.plugin.bottom_navigation == self then self.plugin.bottom_navigation = nil end
