@@ -352,9 +352,10 @@ function ReaderOverlay:init()
         HorizontalSpan:new{ width = action_spacer_width },
         action_controls,
     }
+    local row_height = action_row:getSize().h
     local action_frame = FrameContainer:new{
         width = screen_width,
-        height = action_height,
+        height = row_height,
         bordersize = 0,
         padding = 0,
         padding_left = horizontal_padding,
@@ -380,7 +381,7 @@ function ReaderOverlay:init()
     local title_children = {
         allow_mirroring = false,
         LeftContainer:new{
-            dimen = Geom:new{ w = title_width, h = action_height },
+            dimen = Geom:new{ w = title_width, h = row_height },
             self.book_title_widget,
         },
     }
@@ -391,7 +392,7 @@ function ReaderOverlay:init()
         table.insert(self.toolbar_action_buttons, self.stats_button)
     end
     self.book_title_frame = FrameContainer:new{
-        width = screen_width, height = action_height,
+        width = screen_width, height = row_height,
         bordersize = 0, padding = 0,
         padding_left = horizontal_padding, padding_right = horizontal_padding,
         background = Blitbuffer.COLOR_WHITE,
