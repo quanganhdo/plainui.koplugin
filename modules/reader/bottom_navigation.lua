@@ -36,6 +36,9 @@ function BottomNavigation:init()
     self.chapter_row = Geom:new{ x = 0, y = self.bar.y, w = w, h = button_h }
     self.previous_chapter_button = Geom:new{ x = action_padding, y = self.bar.y, w = button_w, h = button_h }
     self.next_chapter_button = Geom:new{ x = w - action_padding - button_w, y = self.bar.y, w = button_w, h = button_h }
+    local chapter_x = self.previous_chapter_button.x + button_w + button_gap
+    self.chapter_button = Geom:new{ x = chapter_x, y = self.bar.y,
+        w = self.next_chapter_button.x - button_gap - chapter_x, h = button_h }
     self.slider = Geom:new{ x = self.padding, y = self.chapter_row.y + self.chapter_row.h,
         w = w - 2 * self.padding, h = scale(40) }
     local actions_y = self.slider.y + self.slider.h
@@ -173,13 +176,14 @@ function BottomNavigation:pageLabel(page, compact)
     return T(compact and _("p%1") or _("Page %1"), value)
 end
 
-function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold, font_size, row_height)
+function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold, font_size, row_height, link)
     local widget = self.labels[id]
     if not widget or widget.text ~= text then
         if widget then widget:free() end
         widget = TextWidget:new{
             text = text, face = Font:getFace("smallinfofont", font_size or 16),
             max_width = width, bold = bold,
+            truncate_with_ellipsis = true, truncate_left = false,
         }
         self.labels[id] = widget
     end
@@ -188,6 +192,7 @@ function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold, font_
     if align == "center" then x = x + math.floor((width - size.w) / 2)
     elseif align == "right" then x = x + width - size.w end
     widget:paintTo(bb, x, y)
+    if link and text ~= "" then ReturnStyle.underline(bb, x, y, size) end
 end
 
 function BottomNavigation:chapterDestination(direction)
@@ -255,15 +260,15 @@ function BottomNavigation:paintTo(bb, x, y)
     local toc = self.plugin.ui.toc
     local title = toc and toc:getTocTitleByPage(self.model.page) or ""
     if title == "" then title = self.plugin.ui.document:getProps().title or "" end
-    local title_x = self.previous_chapter_button.x + self.previous_chapter_button.w + ToolbarStyle.button_gap
-    local title_w = self.dimen.w - 2 * title_x
-    self:drawText(bb, "chapter", title, title_x, self.chapter_row.y, title_w, "center", true, 16, self.chapter_row.h)
+    local chapter = self.chapter_button
+    self:drawText(bb, "chapter", title, chapter.x, chapter.y, chapter.w,
+        "center", true, ReturnStyle.font_size, chapter.h, true)
 
     local cy = self.slider.y + math.floor(self.slider.h / 2)
     local track_h = Screen:scaleBySize(6)
     bb:paintBorder(self.slider.x, cy - math.floor(track_h / 2), self.slider.w, track_h, line, Blitbuffer.COLOR_BLACK)
     for _, page in ipairs(self.saved_pages) do
-        self:drawCircle(bb, self:sliderPageX(page), cy, Screen:scaleBySize(7), Blitbuffer.COLOR_DARK_GRAY)
+        self:drawCircle(bb, self:sliderPageX(page), cy, Screen:scaleBySize(7), Blitbuffer.COLOR_BLACK)
     end
     local cx = self:sliderPageX(self.model.page)
     local radius = Screen:scaleBySize(12)
@@ -272,7 +277,7 @@ function BottomNavigation:paintTo(bb, x, y)
     self:drawCircle(bb, cx, cy, inner, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
         and T(_("Return to %1"), self:pageLabel(self.model.origin, true)) or "",
-        self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, ReturnStyle.font_size, self.origin_row.h)
+        self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, ReturnStyle.font_size, self.origin_row.h, true)
     self:drawToolbarIcon(bb, "bookmarks", self.bookmarks_button)
     self:drawToolbarIcon(bb, "toc", self.toc_button)
     self:drawToolbarIcon(bb, "search", self.search_button)
@@ -325,6 +330,7 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     elseif pos:intersectWith(self.next_chapter_button) then
         local page = self:chapterDestination(1)
         if page then self.model:setPage(page, true) end
+    elseif pos:intersectWith(self.chapter_button) then self.plugin:showGotoDialog()
     elseif pos:intersectWith(self.neighbor_visible_rects[-1]) then self:selectNeighbor(-1)
     elseif pos:intersectWith(self.neighbor_visible_rects[1]) then self:selectNeighbor(1)
     elseif pos:intersectWith(self.origin_row) then self.model:setPage(self.model.origin, true)

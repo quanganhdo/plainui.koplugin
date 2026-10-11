@@ -75,6 +75,7 @@ local function fixture(deferred, link)
     }
     local plugin = {ui = ui, path = ".", closeBottomNavigation = function(self) self.closed = true end,
         commitNavigationPreview = function(self, page) self.committed = page end,
+        showGotoDialog = function(self) self.goto_opened = true end,
         showBookmarks = function(self) self.bookmarks_opened = true end,
         showTableOfContents = function(self) self.toc_opened = true end,
         showFulltextSearch = function(self) self.search_opened = true end}
@@ -208,7 +209,7 @@ test("carousel images fit inside their borders and the selected card stays cente
     equal(right.freed, true)
 end)
 
-test("bottom actions share toolbar sizing and open Bookmarks, TOC or Search without a preview jump", function()
+test("bottom actions share toolbar sizing and open Go to page, Bookmarks, TOC or Search without a preview jump", function()
     local w, bb, plugin, _, _, tap = fixture()
     w:onShow()
     w:paintTo(bb, 0, 0)
@@ -226,6 +227,8 @@ test("bottom actions share toolbar sizing and open Bookmarks, TOC or Search with
     equal(w.icons.bookmarks.width, style.icon_size)
     equal(w.icons.toc.width, style.icon_size)
     equal(w.icons.search.height, style.icon_size)
+    tap(w.chapter_button)
+    equal(plugin.goto_opened, true)
     tap(w.bookmarks_button)
     equal(plugin.bookmarks_opened, true)
     tap(w.toc_button)

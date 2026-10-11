@@ -68,7 +68,9 @@ function ReturnFooter:paintTo(bb, x, y)
         local label_x = i == 1 and x + self.padding
             or i == 2 and x + math.floor((self.dimen.w - size.w) / 2)
             or x + self.dimen.w - self.padding - size.w
-        widget:paintTo(bb, label_x, y + math.floor((self.dimen.h - size.h) / 2))
+        local label_y = y + math.floor((self.dimen.h - size.h) / 2)
+        widget:paintTo(bb, label_x, label_y)
+        if widget.text ~= "" then ReturnStyle.underline(bb, label_x, label_y, size) end
     end
 end
 
