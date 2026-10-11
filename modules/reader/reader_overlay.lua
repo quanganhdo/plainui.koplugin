@@ -308,9 +308,8 @@ function ReaderOverlay:init()
             self.plugin:showTypographyOverlay()
         end,
     }
-    local stats_button
     if self.plugin:hasAnchoredReadingStatsPopup() then
-        stats_button = FileIconButton:new{
+        self.stats_button = FileIconButton:new{
             action_id = "stats",
             icon_file = action_icon_dir .. "chart-bar.svg",
             width = action_button_width,
@@ -326,9 +325,6 @@ function ReaderOverlay:init()
     if self.lighting_button then table.insert(self.toolbar_action_buttons, self.lighting_button) end
     table.insert(self.toolbar_action_buttons, self.dark_mode_button)
     table.insert(self.toolbar_action_buttons, typography_button)
-    if stats_button then
-        table.insert(self.toolbar_action_buttons, stats_button)
-    end
     self.more_button = FileIconButton:new{
         action_id = "more", icon_file = action_icon_dir .. "dots.svg",
         width = action_button_width, height = action_height,
@@ -367,6 +363,41 @@ function ReaderOverlay:init()
         action_row,
     }
 
+    local title_width = math.max(0, content_width
+        - (self.stats_button and action_button_width + action_button_gap or 0))
+    local ui = self.plugin.ui
+    local props = ui.doc_props or {}
+    local title = props.display_title or props.title
+        or (ui.document and ui.document.file and ui.document.file:match("[^/]+$"))
+        or _("Untitled book")
+    self.book_title_widget = TextWidget:new{
+        text = title:gsub("%s+", " "),
+        face = Font:getFace("smallinfofont", 18),
+        max_width = title_width,
+        truncate_with_ellipsis = true,
+        truncate_left = false,
+    }
+    local title_children = {
+        allow_mirroring = false,
+        LeftContainer:new{
+            dimen = Geom:new{ w = title_width, h = action_height },
+            self.book_title_widget,
+        },
+    }
+    if self.stats_button then
+        table.insert(title_children, HorizontalSpan:new{ width = action_button_gap })
+        table.insert(title_children, self.stats_button)
+        -- Keep both rows available for popup switching and selection feedback.
+        table.insert(self.toolbar_action_buttons, self.stats_button)
+    end
+    self.book_title_frame = FrameContainer:new{
+        width = screen_width, height = action_height,
+        bordersize = 0, padding = 0,
+        padding_left = horizontal_padding, padding_right = horizontal_padding,
+        background = Blitbuffer.COLOR_WHITE,
+        HorizontalGroup:new(title_children),
+    }
+
     self.panel = FrameContainer:new{
         width = screen_width,
         bordersize = 0,
@@ -375,6 +406,11 @@ function ReaderOverlay:init()
         VerticalGroup:new{
             status_frame,
             action_frame,
+            LineWidget:new{
+                background = Blitbuffer.COLOR_GRAY,
+                dimen = Geom:new{ w = screen_width, h = Size.line.medium },
+            },
+            self.book_title_frame,
             LineWidget:new{
                 background = Blitbuffer.COLOR_BLACK,
                 dimen = Geom:new{ w = screen_width, h = Size.line.medium },
