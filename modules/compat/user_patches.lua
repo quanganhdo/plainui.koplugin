@@ -9,7 +9,6 @@ local OWNED_PATCHES = {
     "2-filemanager-metadata-tabs.lua",
     "2-finished-badge.lua",
     "2-reading-percentage.lua",
-    "2-reading-stats-popup.lua",
 }
 
 local active_by_filename
@@ -44,14 +43,8 @@ function UserPatches.detect(options)
         end
     end
 
-    -- Older patch releases did not consistently expose version markers. These
-    -- two handlers are unique enough to identify their source without guessing.
-    local reader_ui = options.reader_ui
-    if reader_ui and (reader_ui.reading_stats_popup_patch_version ~= nil
-            or reader_ui.reading_stats_popup_api_version ~= nil
-            or type(reader_ui.onShowReadingStatsPopup) == "function") then
-        addDetected(detected, seen, "2-reading-stats-popup.lua")
-    end
+    -- Statistics patches coexist with our namespaced overview. Their handlers
+    -- and version markers are not migration signals.
     local file_manager = options.file_manager
     if file_manager and type(file_manager.onBrowseByMetadata) == "function" then
         addDetected(detected, seen, "2-author-series.lua")

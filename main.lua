@@ -30,9 +30,7 @@ local function applyPatches()
     if not UserPatches.isActive("2-reading-percentage.lua") then
         require("modules.reading_percentage")
     end
-    if not UserPatches.isActive("2-reading-stats-popup.lua") then
-        require("modules.reader.reading_stats_popup").install()
-    end
+    require("modules.reader.reading_stats_popup").install()
     UserPatches.showMigrationNotice()
     patched = true
 end
@@ -60,6 +58,7 @@ end
 function PlainUI:onReaderReady()
     local controller = self:getReaderController()
     if controller then
+        require("modules.reader.reading_stats_popup").registerLegacyAlias(self.ui)
         controller:onReaderReady()
     end
 end

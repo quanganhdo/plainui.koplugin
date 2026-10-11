@@ -49,7 +49,7 @@ local PATCH_L10N = {
         ["NEXT CHAPTER"] = "NEXT CHAPTER",
         ["THIS BOOK"] = "THIS BOOK",
         ["PACE"] = "PACE",
-        ["Reading statistics: book overview"] = "Reading statistics: book overview",
+        ["Plain UI: book overview"] = "Plain UI: book overview",
         ["to go"] = "to go",
         ["to read"] = "to read",
         ["read"] = "read",
@@ -80,7 +80,7 @@ local PATCH_L10N = {
         ["NEXT CHAPTER"] = "CHƯƠNG TIẾP",
         ["THIS BOOK"] = "SÁCH NÀY",
         ["PACE"] = "NHỊP ĐỌC",
-        ["Reading statistics: book overview"] = "Thống kê đọc: tổng quan sách",
+        ["Plain UI: book overview"] = "Plain UI: tổng quan sách",
         ["to go"] = "sẽ xong",
         ["to read"] = "để đọc",
         ["read"] = "đã đọc",
@@ -809,40 +809,40 @@ local function showPopup(ui, options)
     return popup
 end
 
-local function detectLegacy(reader_ui)
-    if not reader_ui or reader_ui.plainui_reading_stats_popup then
-        return false
-    end
-    return reader_ui.reading_stats_popup_patch_version ~= nil
-        or reader_ui.reading_stats_popup_api_version ~= nil
-        or type(reader_ui.onShowReadingStatsPopup) == "function"
-end
-
 function Service.install(reader_ui)
     reader_ui = reader_ui or require("apps/reader/readerui")
     if reader_ui.plainui_reading_stats_popup then
         return true, "already_installed"
     end
-    if detectLegacy(reader_ui) then
-        return false, "legacy_active"
-    end
     if not action_registered then
-        Dispatcher:registerAction("reading_stats_popup", {
+        Dispatcher:registerAction("plainui_book_overview", {
             category = "none",
-            event = "ShowReadingStatsPopup",
-            title = _("Reading statistics: book overview"),
+            event = "ShowPlainUIBookOverview",
+            title = _("Plain UI: book overview"),
             reader = true,
         })
         action_registered = true
     end
     reader_ui.plainui_reading_stats_popup = true
-    reader_ui.reading_stats_popup_patch_version = PATCH_VERSION
-    reader_ui.reading_stats_popup_api_version = POPUP_API_VERSION
-    reader_ui.onShowReadingStatsPopup = function(this, options)
+    reader_ui.plainui_reading_stats_popup_patch_version = PATCH_VERSION
+    reader_ui.plainui_reading_stats_popup_api_version = POPUP_API_VERSION
+    reader_ui.onShowPlainUIBookOverview = function(this, options)
         showPopup(this, options)
         return true
     end
     return true, "installed"
+end
+
+function Service.registerLegacyAlias(ui)
+    if require("modules.reader.stats_provider").findExternal(ui) then return end
+    -- Run after reader plugins have registered their actions. Dispatcher keeps
+    -- an existing third-party action unchanged. Without a provider, preserve
+    -- saved gestures from older Plain UI releases through a hidden alias.
+    Dispatcher:registerAction("reading_stats_popup", {
+        category = "none",
+        event = "ShowPlainUIBookOverview",
+        title = _("Plain UI: book overview"),
+    })
 end
 
 function Service.canShow(ui)
@@ -852,24 +852,19 @@ function Service.canShow(ui)
     if ui.plainui_reading_stats_popup then
         return true
     end
-    return type(ui.onShowReadingStatsPopup) == "function"
-        and (tonumber(ui.reading_stats_popup_api_version) or 0) >= POPUP_API_VERSION
+    return require("modules.reader.stats_provider").findExternal(ui) ~= nil
 end
 
 function Service.show(ui, options)
-    if not Service.canShow(ui) then
+    if not ui or not ui.plainui_reading_stats_popup then
         return false
     end
-    if ui.plainui_reading_stats_popup then
-        return showPopup(ui, options)
-    end
-    return ui:onShowReadingStatsPopup(options)
+    return showPopup(ui, options)
 end
 
 Service.PATCH_VERSION = PATCH_VERSION
 Service.POPUP_API_VERSION = POPUP_API_VERSION
 Service._test = {
-    detectLegacy = detectLegacy,
     showPopup = showPopup,
 }
 

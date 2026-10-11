@@ -337,7 +337,7 @@ function ReaderOverlay:init()
             self.plugin:showTypographyOverlay()
         end,
     } or nil
-    if self.plugin:hasAnchoredReadingStatsPopup() then
+    if self.plugin:hasReadingStatsPopup() then
         self.stats_button = FileIconButton:new{
             action_id = "stats",
             icon_file = action_icon_dir .. "chart-bar.svg",

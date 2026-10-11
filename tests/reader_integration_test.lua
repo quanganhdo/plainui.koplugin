@@ -44,7 +44,7 @@ test("compatibility detects every owned legacy patch filename", function()
     end
 end)
 
-test("compatibility recognizes all reading stats legacy signals", function()
+test("statistics patches and their markers do not trigger migration", function()
     local UserPatches = require("modules.compat.user_patches")
     local signals = {
         { reading_stats_popup_patch_version = "1.1.0" },
@@ -54,11 +54,10 @@ test("compatibility recognizes all reading stats legacy signals", function()
     for _, reader_ui in ipairs(signals) do
         local detected = UserPatches.detect{
             patches_dir = "/missing",
-            file_exists = function() return false end,
+            file_exists = function(path) return path:match("2%-reading%-stats%-popup.lua$") ~= nil end,
             reader_ui = reader_ui,
         }
-        assertEqual(#detected, 1)
-        assertEqual(detected[1], "2-reading-stats-popup.lua")
+        assertEqual(#detected, 0)
     end
 end)
 
@@ -139,8 +138,8 @@ test("compatibility hands all patch ownership to Plain UI after removal and rest
     UserPatches._test.reset()
 end)
 
-test("reading stats installation is idempotent and preserves legacy hooks", function()
-    local registered = 0
+test("reading stats installation uses its own action and preserves external hooks", function()
+    local registered = {}
     local function extend(_, definition)
         definition.__index = definition
         return definition
@@ -155,7 +154,9 @@ test("reading stats installation is idempotent and preserves legacy hooks", func
         ["ui/widget/container/centercontainer"] = {},
         ["datastorage"] = { getSettingsDir = function() return "/tmp" end },
         ["device"] = { screen = {} },
-        ["dispatcher"] = { registerAction = function() registered = registered + 1 end },
+        ["dispatcher"] = { registerAction = function(_, name, action)
+            registered[name] = registered[name] or action
+        end },
         ["ui/font"] = {},
         ["ui/widget/container/framecontainer"] = {},
         ["ui/geometry"] = {},
@@ -185,12 +186,15 @@ test("reading stats installation is idempotent and preserves legacy hooks", func
         local installed, reason = Service.install(reader_ui)
         assertEqual(installed, true)
         assertEqual(reason, "installed")
-        local handler = reader_ui.onShowReadingStatsPopup
+        local handler = reader_ui.onShowPlainUIBookOverview
         installed, reason = Service.install(reader_ui)
         assertEqual(installed, true)
         assertEqual(reason, "already_installed")
-        assertEqual(reader_ui.onShowReadingStatsPopup, handler)
-        assertEqual(registered, 1)
+        assertEqual(reader_ui.onShowPlainUIBookOverview, handler)
+        assertEqual(reader_ui.onShowReadingStatsPopup, nil)
+        assertEqual(registered.plainui_book_overview.event, "ShowPlainUIBookOverview")
+        assertEqual(registered.plainui_book_overview.title, "Plain UI: book overview")
+        assertEqual(registered.reading_stats_popup, nil)
 
         local legacy_handler = function() end
         local legacy = {
@@ -198,10 +202,22 @@ test("reading stats installation is idempotent and preserves legacy hooks", func
             onShowReadingStatsPopup = legacy_handler,
         }
         installed, reason = Service.install(legacy)
-        assertEqual(installed, false)
-        assertEqual(reason, "legacy_active")
+        assertEqual(installed, true)
+        assertEqual(reason, "installed")
         assertEqual(legacy.onShowReadingStatsPopup, legacy_handler)
-        assertEqual(registered, 1)
+        assertEqual(legacy.reading_stats_popup_patch_version, "1.1.0")
+        assertEqual(legacy.reading_stats_popup_api_version, nil)
+        assertTruthy(legacy.onShowPlainUIBookOverview)
+        assertEqual(Service.canShow(legacy), true)
+        assertEqual(Service.canShow({onShowReadingStatsPopup = legacy_handler}), true)
+        Service.registerLegacyAlias(legacy)
+        assertEqual(registered.reading_stats_popup, nil)
+        Service.registerLegacyAlias(reader_ui)
+        assertEqual(registered.reading_stats_popup.event, "ShowPlainUIBookOverview")
+        assertEqual(registered.reading_stats_popup.reader, nil)
+        registered.reading_stats_popup = {event = "ExternalBookProgress"}
+        Service.registerLegacyAlias(reader_ui)
+        assertEqual(registered.reading_stats_popup.event, "ExternalBookProgress")
     end)
     package.loaded["modules.reader.reading_stats_popup"] = saved_service
 end)
@@ -528,7 +544,7 @@ test("Plain UI reader controller supports rolling and paging documents, includin
     end)
 end)
 
-test("Plain UI leaves every active legacy patch authoritative for the session", function()
+test("Plain UI installs its overview alongside active statistics patches", function()
     local WidgetContainer = {}
     function WidgetContainer:extend(definition)
         definition.__index = definition
@@ -548,7 +564,6 @@ test("Plain UI leaves every active legacy patch authoritative for the session", 
         "modules.metadata_tabs",
         "modules.finished_badge",
         "modules.reading_percentage",
-        "modules.reader.reading_stats_popup",
     }
     withModules({
         ["ui/widget/container/widgetcontainer"] = WidgetContainer,
@@ -570,7 +585,7 @@ test("Plain UI leaves every active legacy patch authoritative for the session", 
         for _, module_name in ipairs(bundled_modules) do
             assertEqual(package.loaded[module_name], nil, module_name)
         end
-        assertEqual(stats_installs, 0)
+        assertEqual(stats_installs, 1)
         assertEqual(notices, 1)
     end)
 end)

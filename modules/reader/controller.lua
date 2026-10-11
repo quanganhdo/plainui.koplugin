@@ -169,7 +169,7 @@ function Controller:commitNavigationPreview(page)
     self.ui:handleEvent(Event:new("GotoPage", page))
 end
 
-function Controller:hasAnchoredReadingStatsPopup()
+function Controller:hasReadingStatsPopup()
     return require("modules.reader.reading_stats_popup").canShow(self.ui)
 end
 
@@ -180,6 +180,15 @@ function Controller:showReadingStatsPopup(top_offset)
     end
     self:closeRecentBooksMenu()
     self:closeReadingStatsPopup()
+    local provider = require("modules.reader.stats_provider").findExternal(self.ui)
+    if provider then
+        -- External providers own their popup's placement and lifecycle. Remove
+        -- our toolbar before invoking the normal handler, with no layout args.
+        self:closeTypographyOverlay()
+        self:closeBottomNavigation()
+        self:closeOverlay()
+        return provider:onShowReadingStatsPopup()
+    end
     self:setToolbarSelected("stats")
     local popup
     popup = ReadingStatsPopup.show(self.ui, {
