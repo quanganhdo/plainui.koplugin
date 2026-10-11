@@ -5,6 +5,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local Device = require("device")
+local Event = require("ui/event")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local Geom = require("ui/geometry")
@@ -64,6 +65,18 @@ function FileIconButton:init()
             GestureRange:new{ ges = "tap", range = self.dimen },
         },
     }
+    if self.hold_callback then
+        self.ges_events.HoldFileIconButton = { GestureRange:new{ ges = "hold", range = self.dimen } }
+        self.ges_events.HoldReleaseFileIconButton = { GestureRange:new{ ges = "hold_release", range = self.dimen } }
+    end
+end
+
+function FileIconButton:setIcon(icon_file)
+    if self.icon_file == icon_file then return false end
+    self.icon_widget:free()
+    self.icon_file = icon_file
+    self.icon_widget.file = icon_file
+    return true
 end
 
 function FileIconButton:setSelected(selected)
@@ -82,6 +95,21 @@ function FileIconButton:onTapFileIconButton()
         self.callback()
     end
     return true
+end
+
+function FileIconButton:onHoldFileIconButton()
+    if self.enabled and self.hold_callback then
+        self.hold_callback()
+        self.hold_handled = true
+        return true
+    end
+end
+
+function FileIconButton:onHoldReleaseFileIconButton()
+    if self.hold_handled then
+        self.hold_handled = nil
+        return true
+    end
 end
 
 local DragChevron = Widget:extend{
@@ -242,6 +270,32 @@ function ReaderOverlay:init()
     local action_button_gap = ToolbarStyle.button_gap
     local action_icon_size = ToolbarStyle.icon_size
     local action_icon_dir = self.plugin.path .. "/icons/tabler/"
+    if Device:hasFrontlight() then
+        self.lighting_button = FileIconButton:new{
+            action_id = "lighting",
+            icon_file = StatusIndicators.getFrontlightIconPath(),
+            width = action_button_width, height = action_height,
+            icon_width = action_icon_size, icon_height = action_icon_size,
+            callback = function()
+                self.plugin:closeReadingStatsPopup()
+                self.plugin:closeTypographyOverlay()
+                UIManager:broadcastEvent(Event:new("ShowFlDialog"))
+            end,
+            hold_callback = function()
+                UIManager:broadcastEvent(Event:new("ToggleFrontlight"))
+                self:refreshDisplayControls()
+            end,
+        }
+    end
+    self.dark_mode_button = FileIconButton:new{
+        action_id = "dark_mode",
+        icon_file = StatusIndicators.getNightModeIconPath(),
+        width = action_button_width, height = action_height,
+        icon_width = action_icon_size, icon_height = action_icon_size,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ToggleNightMode"))
+        end,
+    }
     local typography_button = FileIconButton:new{
         action_id = "typography",
         icon_file = action_icon_dir .. "text-size.svg",
@@ -268,19 +322,21 @@ function ReaderOverlay:init()
             end,
         }
     end
-    self.toolbar_action_buttons = {
-        typography_button,
-    }
+    self.toolbar_action_buttons = {}
+    if self.lighting_button then table.insert(self.toolbar_action_buttons, self.lighting_button) end
+    table.insert(self.toolbar_action_buttons, self.dark_mode_button)
+    table.insert(self.toolbar_action_buttons, typography_button)
     if stats_button then
         table.insert(self.toolbar_action_buttons, stats_button)
     end
     local action_control_children = {
         allow_mirroring = false,
-        typography_button,
     }
-    if stats_button then
-        table.insert(action_control_children, HorizontalSpan:new{ width = action_button_gap })
-        table.insert(action_control_children, stats_button)
+    for i, button in ipairs(self.toolbar_action_buttons) do
+        if i > 1 then
+            table.insert(action_control_children, HorizontalSpan:new{ width = action_button_gap })
+        end
+        table.insert(action_control_children, button)
     end
     local action_controls = HorizontalGroup:new(action_control_children)
     local action_spacer_width = math.max(
@@ -395,9 +451,37 @@ function ReaderOverlay:refreshStatus()
     self.battery_slot.dimen.w = self.battery_group:getSize().w
     self.wifi_widget:setIcon(StatusIndicators.getWifiIconPath(), wifi_state.available)
     self.status_right_group:resetLayout()
+    self:refreshDisplayControls()
     UIManager:setDirty(self, function()
         return "ui", self.status_refresh_dimen
     end)
+end
+
+function ReaderOverlay:refreshDisplayControls()
+    for _, control in ipairs{
+        { self.dark_mode_button, StatusIndicators.getNightModeIconPath() },
+        { self.lighting_button, StatusIndicators.getFrontlightIconPath() },
+    } do
+        local button, icon_file = control[1], control[2]
+        if button and button:setIcon(icon_file) then
+            UIManager:setDirty(self, "ui", button.dimen)
+        end
+    end
+end
+
+function ReaderOverlay:onToggleNightMode()
+    -- The device listener changes screen mode during the same broadcast.
+    UIManager:nextTick(function()
+        if self.plugin.overlay == self then self:refreshDisplayControls() end
+    end)
+end
+
+function ReaderOverlay:onSetNightMode()
+    self:onToggleNightMode()
+end
+
+function ReaderOverlay:onFrontlightStateChanged()
+    self:refreshDisplayControls()
 end
 
 function ReaderOverlay:scheduleStatusRefresh()

@@ -577,10 +577,10 @@ test("bottom menu hooks open previews and chevron bypasses the hook", function()
     package.loaded["modules.reader.controller"] = nil
 end)
 
-test("Go to page, Bookmarks, TOC and Search replace the preview before opening their native panels", function()
+test("native navigation panels retain the preview until an actual navigation event", function()
     local actions = {}
     withModules({
-        ["ui/event"] = {new = function(_, name) return {name = name} end},
+        ["ui/event"] = {new = function(_, name) return {name = name, handler = "on" .. name} end},
         ["logger"] = {info = function() end},
         ["ui/uimanager"] = {close = function(_, widget) actions[#actions + 1] = widget.name end},
     }, function()
@@ -590,15 +590,87 @@ test("Go to page, Bookmarks, TOC and Search replace the preview before opening t
         })
         for _, pair in ipairs{{"showGotoDialog", "ShowGotoDialog"}, {"showBookmarks", "ShowBookmark"}, {"showTableOfContents", "ShowToc"}, {"showFulltextSearch", "ShowFulltextSearchInput"}} do
             actions = {}
-            c.bottom_navigation = {name = "preview"}
+            local preview = {name = "preview", model = {page = 70, origin = 25}}
+            c.bottom_navigation = preview
+            c:installPreviewNavigationHandler()
             c.overlay = {name = "toolbar"}
             c[pair[1]](c)
-            assertEqual(c.bottom_navigation, nil)
+            assertEqual(c.bottom_navigation, preview)
+            assertEqual(preview.model.page, 70)
+            assertEqual(preview.model.origin, 25)
             assertEqual(c.overlay, nil)
-            assertEqual(actions[1], "preview")
-            assertEqual(actions[2], "toolbar")
-            assertEqual(actions[3], pair[2])
+            assertEqual(actions[1], "toolbar")
+            assertEqual(actions[2], pair[2])
+            c.ui:handleEvent{handler = "onGotoPage", name = "GotoPage"}
+            assertEqual(c.bottom_navigation, nil)
+            assertEqual(actions[3], "preview")
+            assertEqual(actions[4], "GotoPage")
         end
+    end)
+    package.loaded["modules.reader.controller"] = nil
+end)
+
+test("preview navigation hooks restore inherited handlers and respect later hooks", function()
+    withModules({
+        ["ui/event"] = {}, ["logger"] = {},
+        ["ui/uimanager"] = {close = function() end},
+    }, function()
+        package.loaded["modules.reader.controller"] = nil
+        local Controller = require("modules.reader.controller")
+        local original = function() return "handled" end
+        local ui = setmetatable({}, {__index = {handleEvent = original}})
+        local push = function() return "pushed" end
+        ui.link = setmetatable({}, {__index = {addCurrentLocationToStack = push}})
+        local c = Controller.new({path = "/plugin"}, ui)
+        for _, handler in ipairs{"onGotoPage", "onGotoXPointer", "onGotoPercent", "onGotoRelativePage", "onRestoreBookLocation"} do
+            c.bottom_navigation = {}
+            c:installPreviewNavigationHandler()
+            c:installPreviewNavigationHandler()
+            assertEqual(ui:handleEvent{handler = "onAnnotationsModified"}, "handled")
+            assertTruthy(c.bottom_navigation)
+            assertEqual(ui:handleEvent{handler = handler}, "handled")
+            assertEqual(c.bottom_navigation, nil)
+            assertEqual(rawget(ui, "handleEvent"), nil)
+            assertEqual(ui.handleEvent, original)
+            assertEqual(rawget(ui.link, "addCurrentLocationToStack"), nil)
+            assertEqual(ui.link.addCurrentLocationToStack, push)
+        end
+        c.bottom_navigation = {}
+        c:installPreviewNavigationHandler()
+        assertEqual(ui.link:addCurrentLocationToStack(), "pushed")
+        assertEqual(c.bottom_navigation, nil)
+        assertEqual(ui.link.addCurrentLocationToStack, push)
+        c.bottom_navigation = {}
+        c:installPreviewNavigationHandler()
+        local later = function() end
+        ui.handleEvent = later
+        c:closeBottomNavigation()
+        assertEqual(ui.handleEvent, later)
+    end)
+    package.loaded["modules.reader.controller"] = nil
+end)
+
+test("preview bookmarking updates the selected page and the actual reader dogear separately", function()
+    withModules({
+        ["ui/event"] = {}, ["logger"] = {},
+        ["ui/uimanager"] = {setDirty = function() end},
+    }, function()
+        package.loaded["modules.reader.controller"] = nil
+        local toggled, dogear, footer_updates
+        local c = require("modules.reader.controller").new({path = "/plugin"}, {
+            bookmark = {
+                toggleBookmark = function(_, page) toggled = page end,
+                getCurrentPageNumber = function() return "reading-position" end,
+                setDogearVisibility = function(_, xp) dogear = xp end,
+            },
+            view = {footer = {maybeUpdateFooter = function() footer_updates = true end}},
+        })
+        c.bottom_navigation = {preview_bookmark_button = {}}
+        c:togglePreviewBookmark(70)
+        assertEqual(toggled, 70)
+        assertEqual(dogear, "reading-position")
+        assertEqual(footer_updates, true)
+        assertTruthy(c.bottom_navigation)
     end)
     package.loaded["modules.reader.controller"] = nil
 end)

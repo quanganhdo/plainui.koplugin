@@ -51,12 +51,14 @@ package.loaded["ui/uimanager"] = {
 }
 local Widget = require("modules.reader.bottom_navigation")
 local function fixture(deferred, link)
-    local requested, chapter_from, pending = {}, {}, {}
+    local requested, chapter_from, pending, bookmarks = {}, {}, {}, {}
     local ui = {
         link = link,
         getCurrentPage = function() return 25 end,
         document = {getPageCount = function() return 100 end, getProps = function() return {title = "Book"} end,
+            getPageXPointer = function(_, page) return tostring(page) end,
             getPageFromXPointer = function(_, xp) return tonumber(xp) end},
+        bookmark = {isPageBookmarked = function(_, xp) return bookmarks[tonumber(xp)] == true end},
         toc = {
             getPreviousChapter = function(_, page) chapter_from.previous = page; return page > 10 and 10 or nil end,
             getNextChapter = function(_, page) chapter_from.next = page; return page < 90 and 90 or nil end,
@@ -76,6 +78,10 @@ local function fixture(deferred, link)
     local plugin = {ui = ui, path = ".", closeBottomNavigation = function(self) self.closed = true end,
         commitNavigationPreview = function(self, page) self.committed = page end,
         showGotoDialog = function(self) self.goto_opened = true end,
+        togglePreviewBookmark = function(self, page)
+            self.bookmarked_page = page
+            bookmarks[page] = not bookmarks[page]
+        end,
         showBookmarks = function(self) self.bookmarks_opened = true end,
         showTableOfContents = function(self) self.toc_opened = true end,
         showFulltextSearch = function(self) self.search_opened = true end}
@@ -221,8 +227,9 @@ test("bottom actions share toolbar sizing and open Go to page, Bookmarks, TOC or
     equal(w.bookmarks_button.y, w.origin_row.y)
     equal(w.toc_button.y, w.origin_row.y)
     equal(w.search_button.y, w.origin_row.y)
-    truthy(w.origin_row.x + w.origin_row.w < w.bookmarks_button.x)
-    equal(w.bookmarks_button.x + w.bookmarks_button.w + style.button_gap, w.toc_button.x)
+    truthy(w.origin_row.x + w.origin_row.w < w.toc_button.x)
+    equal(w.toc_button.x + w.toc_button.w + style.button_gap, w.bookmarks_button.x)
+    equal(w.bookmarks_button.x + w.bookmarks_button.w + style.button_gap, w.search_button.x)
     equal(w.labels.percent, nil)
     equal(w.icons.bookmarks.width, style.icon_size)
     equal(w.icons.toc.width, style.icon_size)
@@ -240,6 +247,30 @@ test("bottom actions share toolbar sizing and open Go to page, Bookmarks, TOC or
     local icon = w.icons.bookmarks
     w:onCloseWidget()
     equal(icon.freed, true)
+end)
+
+test("the preview bookmark toggles the selected page without moving or committing the reader", function()
+    local w, bb, plugin, _, _, tap = fixture()
+    w:onShow()
+    w.model:setPage(70, true)
+    equal(w:isPreviewBookmarked(), false)
+    tap(w.preview_bookmark_button)
+    equal(plugin.bookmarked_page, 70)
+    equal(w:isPreviewBookmarked(), true)
+    w:paintTo(bb, 0, 0)
+    tap(w.preview_bookmark_button)
+    equal(w:isPreviewBookmarked(), false)
+    equal(plugin.ui:getCurrentPage(), 25)
+    equal(w.model.origin, 25)
+    equal(w.model.page, 70)
+    equal(plugin.committed, nil)
+    equal(plugin.closed, nil)
+    w:onCloseWidget()
+    w, _, plugin, _, _, tap = fixture(true)
+    w:onShow()
+    tap(w.preview_bookmark_button)
+    equal(plugin.bookmarked_page, nil)
+    w:onCloseWidget()
 end)
 
 test("chapter buttons navigate from preview page without committing a reading jump", function()

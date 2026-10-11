@@ -75,14 +75,68 @@ function Controller:showBottomNavigation()
     self:closeOverlay()
     local BottomNavigation = require("modules.reader.bottom_navigation")
     self.bottom_navigation = BottomNavigation:new{ plugin = self }
+    self:installPreviewNavigationHandler()
     UIManager:show(self.bottom_navigation)
+end
+
+function Controller:installPreviewNavigationHandler()
+    if self.preview_navigation_handler then return end
+    local original = self.ui.handleEvent
+    if type(original) ~= "function" then return end
+    local navigation_events = {
+        onGotoPage = true, onGotoXPointer = true,
+        onGotoPercent = true, onGotoRelativePage = true, onRestoreBookLocation = true,
+    }
+    self.preview_navigation_original = rawget(self.ui, "handleEvent")
+    self.preview_navigation_handler = function(ui, event, ...)
+        if event and navigation_events[event.handler] then self:closeBottomNavigation() end
+        return original(ui, event, ...)
+    end
+    self.ui.handleEvent = self.preview_navigation_handler
+    -- Search results can navigate through ReaderRolling directly. Native
+    -- destination selection still pushes history before making that jump.
+    local link = self.ui.link
+    if link and type(link.addCurrentLocationToStack) == "function" then
+        local push = link.addCurrentLocationToStack
+        self.preview_history_original = rawget(link, "addCurrentLocationToStack")
+        self.preview_history_handler = function(object, ...)
+            self:closeBottomNavigation()
+            return push(object, ...)
+        end
+        link.addCurrentLocationToStack = self.preview_history_handler
+    end
+end
+
+function Controller:restorePreviewNavigationHandler()
+    if self.preview_navigation_handler
+            and self.ui.handleEvent == self.preview_navigation_handler then
+        self.ui.handleEvent = self.preview_navigation_original
+    end
+    self.preview_navigation_handler, self.preview_navigation_original = nil, nil
+    local link = self.ui.link
+    if self.preview_history_handler and link.addCurrentLocationToStack == self.preview_history_handler then
+        link.addCurrentLocationToStack = self.preview_history_original
+    end
+    self.preview_history_handler, self.preview_history_original = nil, nil
 end
 
 function Controller:closeBottomNavigation()
     local widget = self.bottom_navigation
+    self:restorePreviewNavigationHandler()
     if not widget then return end
     self.bottom_navigation = nil
     UIManager:close(widget)
+end
+
+function Controller:togglePreviewBookmark(page)
+    local bookmark = self.ui.bookmark
+    if not bookmark then return end
+    bookmark:toggleBookmark(page)
+    bookmark:setDogearVisibility(bookmark:getCurrentPageNumber())
+    self.ui.view.footer:maybeUpdateFooter()
+    if self.bottom_navigation then
+        UIManager:setDirty(self.bottom_navigation, "ui", self.bottom_navigation.preview_bookmark_button)
+    end
 end
 
 function Controller:commitNavigationPreview(page)
@@ -277,32 +331,29 @@ function Controller:showDefaultMenu()
     self.ui:handleEvent(Event:new("ShowMenu"))
 end
 
-function Controller:showGotoDialog()
+function Controller:showNavigationPanel(event)
     self:closeReadingStatsPopup()
-    self:closeBottomNavigation()
     self:closeOverlay()
-    self.ui:handleEvent(Event:new("ShowGotoDialog"))
+    -- Retain the preview beneath native panels, including nested dialogs and
+    -- search results. Cancelling reveals it unchanged; a navigation event
+    -- closes it before the reader jumps, even if the destination is unchanged.
+    self.ui:handleEvent(Event:new(event))
+end
+
+function Controller:showGotoDialog()
+    self:showNavigationPanel("ShowGotoDialog")
 end
 
 function Controller:showBookmarks()
-    self:closeReadingStatsPopup()
-    self:closeBottomNavigation()
-    self:closeOverlay()
-    self.ui:handleEvent(Event:new("ShowBookmark"))
+    self:showNavigationPanel("ShowBookmark")
 end
 
 function Controller:showTableOfContents()
-    self:closeReadingStatsPopup()
-    self:closeBottomNavigation()
-    self:closeOverlay()
-    self.ui:handleEvent(Event:new("ShowToc"))
+    self:showNavigationPanel("ShowToc")
 end
 
 function Controller:showFulltextSearch()
-    self:closeReadingStatsPopup()
-    self:closeBottomNavigation()
-    self:closeOverlay()
-    self.ui:handleEvent(Event:new("ShowFulltextSearchInput"))
+    self:showNavigationPanel("ShowFulltextSearchInput")
 end
 
 function Controller:backToFileManager()

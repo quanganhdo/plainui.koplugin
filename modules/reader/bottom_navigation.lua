@@ -44,12 +44,12 @@ function BottomNavigation:init()
     local actions_y = self.slider.y + self.slider.h
     self.search_button = Geom:new{ x = w - action_padding - button_w,
         y = actions_y, w = button_w, h = button_h }
-    self.toc_button = Geom:new{ x = self.search_button.x - button_gap - button_w,
+    self.bookmarks_button = Geom:new{ x = self.search_button.x - button_gap - button_w,
         y = actions_y, w = button_w, h = button_h }
-    self.bookmarks_button = Geom:new{ x = self.toc_button.x - button_gap - button_w,
+    self.toc_button = Geom:new{ x = self.bookmarks_button.x - button_gap - button_w,
         y = actions_y, w = button_w, h = button_h }
     self.origin_row = Geom:new{ x = self.padding, y = actions_y,
-        w = self.bookmarks_button.x - button_gap - self.padding, h = ReturnStyle.height }
+        w = self.toc_button.x - button_gap - self.padding, h = ReturnStyle.height }
     self.chevron = Geom:new{ x = 0, y = self.origin_row.y + self.origin_row.h,
         w = w, h = h - self.origin_row.y - self.origin_row.h }
     -- The selected page is centered between the header and bar; adjacent pages extend
@@ -59,6 +59,17 @@ function BottomNavigation:init()
     self.preview_rect = Geom:new{ x = math.floor((w - card_w) / 2),
         y = self.header.h + math.floor((self.bar.y - self.header.h - card_h) / 2), w = card_w, h = card_h }
     local r = self.preview_rect
+    self.preview_padding = scale(12)
+    local icon_size = ToolbarStyle.icon_size
+    self.preview_bookmark_button = Geom:new{
+        -- Match the page-count text's bottom inset around the visible shape,
+        -- including the touch target and the SVG's internal blank space.
+        x = r.x + r.w - self.preview_padding - math.floor((button_w - icon_size) / 2)
+            - icon_size + math.floor(icon_size * 5 / 24 + 0.5),
+        y = r.y + self.preview_padding - math.floor((button_h - icon_size) / 2)
+            - math.floor(icon_size * 2 / 24 + 0.5),
+        w = button_w, h = button_h,
+    }
     self.preview_image_rect = Geom:new{ x = r.x + scale(24), y = r.y + scale(28),
         w = r.w - scale(48), h = r.h - scale(68) }
     self.close_button = Geom:new{ x = w - scale(40), y = 0,
@@ -80,6 +91,7 @@ function BottomNavigation:init()
     for id, file in pairs{
         previous_chapter = "player-skip-back.svg", next_chapter = "player-skip-forward.svg",
         bookmarks = "bookmark.svg", toc = "list-details.svg", search = "search.svg",
+        preview_bookmark = "bookmark.svg", preview_bookmark_filled = "bookmark-filled.svg",
     } do
         self.icons[id] = ImageWidget:new{
             file = self.plugin.path .. "/icons/tabler/" .. file,
@@ -202,6 +214,11 @@ function BottomNavigation:chapterDestination(direction)
     return toc:getNextChapter(self.model.page)
 end
 
+function BottomNavigation:isPreviewBookmarked()
+    local ui = self.plugin.ui
+    return ui.bookmark and ui.bookmark:isPageBookmarked(ui.document:getPageXPointer(self.model.page)) or false
+end
+
 function BottomNavigation:drawToolbarIcon(bb, id, rect, enabled)
     local icon = self.icons[id]
     icon.dim = enabled == false
@@ -226,7 +243,7 @@ end
 function BottomNavigation:paintTo(bb, x, y)
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "feature_title", _("Page Preview"), self.padding, self.close_button.y,
-        self.close_button.x - 2 * self.padding, "left", true, 18, self.close_button.h)
+        self.close_button.x - 2 * self.padding, "left", true, 18, self.header.h)
     for _, offset in ipairs{ -1, 1 } do
         local entry = self.neighbor_images[offset]
         local page = self.model.page + offset
@@ -236,6 +253,8 @@ function BottomNavigation:paintTo(bb, x, y)
     end
     local r, image_rect = self.preview_rect, self.preview_image_rect
     self:paintPage(bb, r, self.image)
+    self:drawToolbarIcon(bb, self:isPreviewBookmarked() and "preview_bookmark_filled" or "preview_bookmark",
+        self.preview_bookmark_button, self.model.ready)
     if not self.image then
         self:drawText(bb, "loading", self.failed and _("Preview unavailable") or _("Loading…"),
             image_rect.x, image_rect.y + math.floor(image_rect.h / 2), image_rect.w, "center", false, 14)
@@ -321,6 +340,8 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     if pos:intersectWith(self.chevron) then self.plugin:showFullConfigMenu()
     elseif pos:intersectWith(self.slider) then self:selectAt(pos.x, true)
     elseif pos:intersectWith(self.close_button) then self.plugin:closeBottomNavigation()
+    elseif pos:intersectWith(self.preview_bookmark_button) then
+        if self.model.ready then self.plugin:togglePreviewBookmark(self.model.page) end
     elseif pos:intersectWith(self.bookmarks_button) then self.plugin:showBookmarks()
     elseif pos:intersectWith(self.toc_button) then self.plugin:showTableOfContents()
     elseif pos:intersectWith(self.search_button) then self.plugin:showFulltextSearch()
@@ -392,6 +413,9 @@ function BottomNavigation:onCloseWidget()
     for _, widget in pairs(self.labels) do widget:free() end
     self.labels = {}
     if self.plugin.bottom_navigation == self then self.plugin.bottom_navigation = nil end
+    if not self.plugin.bottom_navigation and self.plugin.restorePreviewNavigationHandler then
+        self.plugin:restorePreviewNavigationHandler()
+    end
     UIManager:setDirty(nil, "flashui", self.dimen)
 end
 
