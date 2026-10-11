@@ -199,6 +199,8 @@ end
 
 function BottomNavigation:paintTo(bb, x, y)
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
+    self:drawText(bb, "feature_title", _("Page Preview"), self.padding, self.close_button.y,
+        self.close_button.x - 2 * self.padding, "left", true, 18, self.close_button.h)
     for _, offset in ipairs{ -1, 1 } do
         local entry = self.neighbor_images[offset]
         local page = self.model.page + offset
