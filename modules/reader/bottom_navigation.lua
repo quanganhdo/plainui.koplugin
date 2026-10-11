@@ -307,8 +307,6 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     elseif pos:intersectWith(self.origin_row) then self.model:setPage(self.model.origin, true)
     elseif pos:intersectWith(self.preview_image_rect) then
         if self.model.ready then self.plugin:commitNavigationPreview(self.model.page) end
-    elseif pos:notIntersectWith(self.preview_rect) and pos.y < self.bar.y then
-        self.plugin:closeBottomNavigation()
     end
     return true
 end
@@ -340,7 +338,6 @@ function BottomNavigation:onSwipePlainNavigation(_, ges)
         self:selectAt(x, true)
     elseif ges.direction == "north" and ges.pos:intersectWith(self.chevron) then
         self.plugin:showFullConfigMenu()
-    elseif ges.direction == "south" then self.plugin:closeBottomNavigation()
     elseif ges.pos:intersectWith(self.carousel_rect) then
         if ges.direction == "west" then self.model:setPage(self.model.page + 1, true)
         elseif ges.direction == "east" then self.model:setPage(self.model.page - 1, true) end

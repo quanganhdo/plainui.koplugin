@@ -240,6 +240,25 @@ test("neighbor previews center pages and close cannot commit a reading jump", fu
     w:onCloseWidget()
 end)
 
+test("empty taps and downward swipes are consumed without closing or committing", function()
+    local w, _, plugin = fixture()
+    w:onShow()
+    for _, point in ipairs{
+        {x = 0, y = 0},
+        {x = w.dimen.w / 2, y = w.preview_rect.y / 2},
+        {x = w.dimen.w / 2, y = (w.preview_rect.y + w.preview_rect.h + w.bar.y) / 2},
+        {x = w.preview_rect.x + 2, y = w.preview_rect.y + 2},
+    } do
+        local pos = Geom:new{x = point.x, y = point.y}
+        equal(w:onTapPlainNavigation(nil, {pos = pos}), true)
+        equal(w:onSwipePlainNavigation(nil, {pos = pos, direction = "south"}), true)
+        equal(plugin.closed, nil)
+        equal(plugin.committed, nil)
+        equal(w.model.page, 25)
+    end
+    w:onCloseWidget()
+end)
+
 test("stale or unavailable neighboring previews do not select a different page", function()
     local w, _, plugin, _, _, tap = fixture()
     w:onShow()
