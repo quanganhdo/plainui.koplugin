@@ -287,9 +287,9 @@ function ReaderOverlay:init()
     local action_icon_size = ToolbarStyle.icon_size
     local action_icon_dir = self.plugin.path .. "/icons/tabler/"
     self.recent_books_button = FileIconButton:new{
-        action_id = "recent_books", icon = "chevron.up", icon_rotation_angle = 180,
+        action_id = "recent_books", icon_file = action_icon_dir .. "history.svg",
         width = action_button_width, height = action_height,
-        icon_width = Screen:scaleBySize(18), icon_height = Screen:scaleBySize(18),
+        icon_width = action_icon_size, icon_height = action_icon_size,
         callback = function() self.plugin:showRecentBooksMenu(self.recent_books_button.dimen) end,
     }
     if Device:hasFrontlight() then
@@ -365,7 +365,7 @@ function ReaderOverlay:init()
         table.insert(action_control_children, button)
     end
     local action_controls = HorizontalGroup:new(action_control_children)
-    local recent_books_gap = Screen:scaleBySize(12)
+    local recent_books_gap = action_button_gap
     local navigation_width = back_width + recent_books_gap + action_button_width
     local action_spacer_width = math.max(
         0,
