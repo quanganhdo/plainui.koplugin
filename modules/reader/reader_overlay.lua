@@ -175,7 +175,10 @@ function ReaderOverlay:init()
     self.battery_widget = StatusIcon:new{
         ignore_hold = true,
         touch_range = function()
-            if self.battery_widget.visible then return self.battery_slot.dimen end
+            if not self.battery_widget.visible then return end
+            local icon = self.battery_widget.dimen
+            local width = self.battery_group:getSize().w
+            return Geom:new{ x = icon.x + icon.w - width, y = icon.y, w = width, h = icon.h }
         end,
         icon_file = StatusIndicators.getBatteryIconPath(),
         icon_width = battery_icon_width,
@@ -184,7 +187,7 @@ function ReaderOverlay:init()
         width = battery_icon_width,
         height = status_height,
         callback = function()
-            StatusIndicators.showBatteryMenu(self.battery_slot.dimen)
+            StatusIndicators.showBatteryMenu(self.battery_widget.touch_range())
             self:refreshStatus()
         end,
     }
