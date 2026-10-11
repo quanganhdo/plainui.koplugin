@@ -19,9 +19,7 @@ local function configured(value)
 end
 
 function Actions.getTouchInstructions()
-    local text = Device.isKindle and Device:isKindle()
-        and _("Disable touchscreen?\n\nPut your Kindle to sleep, then wake it to restore touch.")
-        or _("Disable touchscreen?\n\nPut your device to sleep, then wake it to restore touch.")
+    local text = _("Disable touchscreen?\n\nPut your e-reader to sleep, then wake it to restore touch.")
     local page_keys = { LPgBack = true, LPgFwd = true, RPgBack = true, RPgFwd = true }
     local event_map = Device.input and Device.input.event_map
     for _, key in pairs(event_map or {}) do

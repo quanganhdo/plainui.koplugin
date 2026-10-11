@@ -127,16 +127,14 @@ test("selection closes reader overlays before invoking native actions and rechec
 end)
 
 test("touch instructions suggest page swipes unless physical page-turn keys are known", function()
-    device.isKindle = function() return true end
     device.input = {event_map = { [1] = "Power" }}
-    H.assertContains(Actions.getTouchInstructions(), "Kindle")
+    H.assertContains(Actions.getTouchInstructions(), "your e-reader")
     H.assertContains(Actions.getTouchInstructions(), "Swipes always active")
     device.input.event_map[2] = "RPgFwd"
     equal(Actions.getTouchInstructions():find("Swipes always active", 1, true), nil)
     device.input = nil
     H.assertContains(Actions.getTouchInstructions(), "Swipes always active")
-    device.isKindle = nil
-    H.assertContains(Actions.getTouchInstructions(), "your device")
+    H.assertContains(Actions.getTouchInstructions(), "your e-reader")
 end)
 
 run()
