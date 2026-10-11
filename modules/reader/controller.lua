@@ -176,6 +176,7 @@ function Controller:showReadingStatsPopup(top_offset)
     if not ReadingStatsPopup.canShow(self.ui) then
         return
     end
+    self:closeRecentBooksMenu()
     self:closeReadingStatsPopup()
     self:setToolbarSelected("stats")
     local popup
@@ -241,6 +242,7 @@ function Controller:switchToolbarAction(pos, current_action)
         return false
     end
 
+    self:closeRecentBooksMenu()
     self:closeMoreMenu()
     self:closeTypographyOverlay()
     if button.action_id == current_action then
@@ -285,6 +287,7 @@ function Controller:showOverlay()
 end
 
 function Controller:closeOverlay()
+    self:closeRecentBooksMenu()
     self:closeMoreMenu()
     if not self.overlay then
         return
@@ -295,6 +298,7 @@ function Controller:closeOverlay()
 end
 
 function Controller:showTypographyOverlay(options)
+    self:closeRecentBooksMenu()
     self:closeMoreMenu()
     if self.typography_overlay or not self.ui or not self.ui.rolling then
         return
@@ -345,6 +349,7 @@ function Controller:closeTypographyOverlay()
 end
 
 function Controller:showFullConfigMenu()
+    self:closeRecentBooksMenu()
     self:closeMoreMenu()
     self:closeReadingStatsPopup()
     self:closeTypographyOverlay()
@@ -363,6 +368,7 @@ end
 
 function Controller:showMoreMenu(anchor)
     if self.more_menu then self:closeMoreMenu(); return end
+    self:closeRecentBooksMenu()
     self:closeReadingStatsPopup()
     self:closeTypographyOverlay()
     local MoreMenu = require("modules.reader.more_menu")
@@ -376,6 +382,45 @@ function Controller:closeMoreMenu()
     local menu = self.more_menu
     self.more_menu = nil
     UIManager:close(menu)
+end
+
+function Controller:showRecentBooksMenu(anchor)
+    if self.recent_books_menu then self:closeRecentBooksMenu(); return end
+    self:closeMoreMenu()
+    self:closeReadingStatsPopup()
+    self:closeTypographyOverlay()
+    local Menu = require("modules.reader.recent_books_menu")
+    self.recent_books_menu = Menu:new{ plugin = self, anchor = anchor and anchor:copy() }
+    self:setToolbarSelected("recent_books")
+    UIManager:show(self.recent_books_menu)
+end
+
+function Controller:closeRecentBooksMenu()
+    if not self.recent_books_menu then return end
+    local menu = self.recent_books_menu
+    self.recent_books_menu = nil
+    UIManager:close(menu)
+end
+
+function Controller:openRecentBook(file)
+    self:closeRecentBooksMenu()
+    if not file or file == self.ui.document.file then return end
+    if require("libs/libkoreader-lfs").attributes(file, "mode") ~= "file" then
+        local _ = require("gettext")
+        UIManager:show(require("ui/widget/infomessage"):new{ text = _("This book is no longer available.") })
+        return
+    end
+    self:closeReadingStatsPopup()
+    self:closeTypographyOverlay()
+    self:closeOverlay()
+    self.ui:switchDocument(file)
+end
+
+function Controller:showReadingHistory()
+    self:closeReadingStatsPopup()
+    self:closeTypographyOverlay()
+    self:closeOverlay()
+    self.ui.history:onShowHist()
 end
 
 function Controller:runMoreAction(key)

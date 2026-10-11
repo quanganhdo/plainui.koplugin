@@ -13,6 +13,7 @@ local GestureRange = require("ui/gesturerange")
 local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local ImageWidget = require("ui/widget/imagewidget")
+local IconWidget = require("ui/widget/iconwidget")
 local InputContainer = require("ui/widget/container/inputcontainer")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
@@ -37,7 +38,11 @@ local FileIconButton = InputContainer:extend{
 }
 
 function FileIconButton:init()
-    self.icon_widget = ImageWidget:new{
+    self.icon_widget = self.icon and IconWidget:new{
+        icon = self.icon, dim = not self.enabled,
+        rotation_angle = self.icon_rotation_angle,
+        width = self.icon_width, height = self.icon_height,
+    } or ImageWidget:new{
         alpha = false,
         dim = not self.enabled,
         file = self.icon_file,
@@ -276,10 +281,17 @@ function ReaderOverlay:init()
             self.plugin:backToFileManager()
         end,
     }
+    self.back_button = back_button
     local action_button_width = ToolbarStyle.button_width
     local action_button_gap = ToolbarStyle.button_gap
     local action_icon_size = ToolbarStyle.icon_size
     local action_icon_dir = self.plugin.path .. "/icons/tabler/"
+    self.recent_books_button = FileIconButton:new{
+        action_id = "recent_books", icon = "chevron.up", icon_rotation_angle = 180,
+        width = action_button_width, height = action_height,
+        icon_width = Screen:scaleBySize(18), icon_height = Screen:scaleBySize(18),
+        callback = function() self.plugin:showRecentBooksMenu(self.recent_books_button.dimen) end,
+    }
     if Device:hasFrontlight() then
         self.lighting_button = FileIconButton:new{
             action_id = "lighting",
@@ -287,6 +299,7 @@ function ReaderOverlay:init()
             width = action_button_width, height = action_height,
             icon_width = action_icon_size, icon_height = action_icon_size,
             callback = function()
+                self.plugin:closeRecentBooksMenu()
                 self.plugin:closeReadingStatsPopup()
                 self.plugin:closeTypographyOverlay()
                 UIManager:broadcastEvent(Event:new("ShowFlDialog"))
@@ -352,16 +365,23 @@ function ReaderOverlay:init()
         table.insert(action_control_children, button)
     end
     local action_controls = HorizontalGroup:new(action_control_children)
+    local recent_books_gap = Screen:scaleBySize(12)
+    local navigation_width = back_width + recent_books_gap + action_button_width
     local action_spacer_width = math.max(
         0,
-        content_width - back_width - action_controls:getSize().w
+        content_width - navigation_width - action_controls:getSize().w
     )
     local action_row = HorizontalGroup:new{
         allow_mirroring = false,
         back_button,
+        HorizontalSpan:new{ width = recent_books_gap },
+        self.recent_books_button,
         HorizontalSpan:new{ width = action_spacer_width },
         action_controls,
     }
+    -- This button belongs to the navigation group, not the right-hand controls,
+    -- but participates in popup switching and the same selection feedback.
+    table.insert(self.toolbar_action_buttons, self.recent_books_button)
     local row_height = action_row:getSize().h
     local action_frame = FrameContainer:new{
         width = screen_width,
