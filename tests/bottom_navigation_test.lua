@@ -47,8 +47,8 @@ package.loaded["ui/uimanager"] = {
     setDirty = function() end, scheduleIn = function() end, unschedule = function() end,
 }
 local Widget = require("modules.reader.bottom_navigation")
-local function fixture()
-    local requested, chapter_from = {}, {}
+local function fixture(deferred)
+    local requested, chapter_from, pending = {}, {}, {}
     local ui = {
         getCurrentPage = function() return 25 end,
         document = {getPageCount = function() return 100 end, getProps = function() return {title = "Book"} end},
@@ -61,7 +61,9 @@ local function fixture()
             getPageThumbnail = function(_, page, w, h, _, callback)
                 requested[#requested + 1] = page
                 local factor = math.min(w / 600, h / 800)
-                callback({bb = {copy = function() return {w = math.floor(600 * factor), h = math.floor(800 * factor)} end}})
+                local tile = {bb = {copy = function() return {w = math.floor(600 * factor), h = math.floor(800 * factor)} end}}
+                if deferred then pending[#pending + 1] = function() callback(tile) end
+                else callback(tile) end
             end,
             cancelPageThumbnailRequests = function() end,
         },
@@ -80,8 +82,54 @@ local function fixture()
     local function tap(r)
         widget:onTapPlainNavigation(nil, {pos = Geom:new{x = r.x + r.w / 2, y = r.y + r.h / 2}})
     end
-    return widget, bb, plugin, requested, chapter_from, tap
+    return widget, bb, plugin, requested, chapter_from, tap, pending
 end
+
+test("page borders appear before thumbnails and stay visible through rapid jumps", function()
+    local w, bb, plugin, requested, _, tap, pending = fixture(true)
+    local function borders()
+        bb.calls = {}
+        w:paintTo(bb, 0, 0)
+        local count = 0
+        for _, call in ipairs(bb.calls) do
+            if call.kind == "border" and call.y == w.preview_rect.y then count = count + 1 end
+        end
+        return count
+    end
+    w:onShow()
+    equal(borders(), 3)
+    pending[1]()
+    pending[2]()
+    pending[3]()
+    local center, left, right = w.image, w.neighbor_images[-1].image, w.neighbor_images[1].image
+    w.model:setPage(40, false)
+    w.model:setPage(50, false)
+    equal(center.freed, true)
+    equal(left.freed, true)
+    equal(right.freed, true)
+    equal(w.image, nil)
+    equal(next(w.neighbor_images), nil)
+    equal(borders(), 3)
+    equal(w.labels.page_count.text, "Page 50 of 100")
+    tap(w.preview_image_rect)
+    equal(plugin.committed, nil)
+    pending[2]() -- A canceled neighboring response must not refill an old card.
+    equal(next(w.neighbor_images), nil)
+    w.model.generate()
+    equal(requested[#requested], 50)
+    pending[4]()
+    truthy(w.image)
+    equal(next(w.neighbor_images), nil)
+    equal(borders(), 3)
+    pending[5]()
+    pending[6]()
+    truthy(w.neighbor_images[-1] and w.neighbor_images[1])
+    w.model:setPage(1, false)
+    equal(borders(), 2)
+    w.model:setPage(100, false)
+    equal(borders(), 2)
+    w:onCloseWidget()
+end)
 
 test("carousel images fit inside their borders and the selected card stays centered", function()
     local w, bb = fixture()

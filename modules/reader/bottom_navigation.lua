@@ -66,10 +66,14 @@ function BottomNavigation:init()
         thumbnail = self.plugin.ui.thumbnail, manager = UIManager,
         width = self.preview_image_rect.w, height = self.preview_image_rect.h,
         changed = function()
-            -- Keep the last completed page visible while the next tile renders.
-            -- The model disables committing it until the new page is ready.
+            -- Show the selected page's empty cards immediately; each thumbnail
+            -- fills its card when ready, without leaving stale pages on screen.
+            self:clearImage()
+            self:clearNeighborImages()
+            self.image_page = nil
             self.failed = false
             UIManager:setDirty(self, "ui", self.bar)
+            UIManager:setDirty(self, "ui", self.carousel_rect)
         end,
         rendered = function(tile)
             if tile then
@@ -182,7 +186,10 @@ function BottomNavigation:paintTo(bb, x, y)
     bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
     for _, offset in ipairs{ -1, 1 } do
         local entry = self.neighbor_images[offset]
-        if entry then self:paintPage(bb, self.neighbor_rects[offset], entry.image) end
+        local page = self.model.page + offset
+        if page >= 1 and page <= self.model.count then
+            self:paintPage(bb, self.neighbor_rects[offset], entry and entry.image)
+        end
     end
     local r, image_rect = self.preview_rect, self.preview_image_rect
     self:paintPage(bb, r, self.image)
