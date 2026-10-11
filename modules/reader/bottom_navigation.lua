@@ -45,8 +45,8 @@ function BottomNavigation:init()
     local r = self.preview_rect
     self.preview_image_rect = Geom:new{ x = r.x + scale(24), y = r.y + scale(28),
         w = r.w - scale(48), h = r.h - scale(68) }
-    self.close_button = Geom:new{ x = r.x + r.w - scale(32), y = r.y,
-        w = scale(32), h = scale(28) }
+    self.close_button = Geom:new{ x = w - scale(40), y = 0,
+        w = scale(40), h = scale(40) }
     local gap = scale(16)
     self.neighbor_rects = {
         [-1] = Geom:new{ x = r.x - r.w - gap, y = r.y, w = r.w, h = r.h },
