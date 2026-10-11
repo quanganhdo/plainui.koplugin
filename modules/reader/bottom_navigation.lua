@@ -40,7 +40,7 @@ function BottomNavigation:init()
     local card_w = math.floor(w * 0.68)
     local card_h = math.min(math.floor(h * 0.66), self.bar.y - scale(48))
     self.preview_rect = Geom:new{ x = math.floor((w - card_w) / 2),
-        y = scale(24), w = card_w, h = card_h }
+        y = math.floor((self.bar.y - card_h) / 2), w = card_w, h = card_h }
     local r = self.preview_rect
     self.preview_image_rect = Geom:new{ x = r.x + scale(24), y = r.y + scale(28),
         w = r.w - scale(48), h = r.h - scale(56) }
