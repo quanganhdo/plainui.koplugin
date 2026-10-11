@@ -47,11 +47,13 @@ package.loaded["ui/uimanager"] = {
     setDirty = function() end, scheduleIn = function() end, unschedule = function() end,
 }
 local Widget = require("modules.reader.bottom_navigation")
-local function fixture(deferred)
+local function fixture(deferred, link)
     local requested, chapter_from, pending = {}, {}, {}
     local ui = {
+        link = link,
         getCurrentPage = function() return 25 end,
-        document = {getPageCount = function() return 100 end, getProps = function() return {title = "Book"} end},
+        document = {getPageCount = function() return 100 end, getProps = function() return {title = "Book"} end,
+            getPageFromXPointer = function(_, xp) return tonumber(xp) end},
         toc = {
             getPreviousChapter = function(_, page) chapter_from.previous = page; return page > 10 and 10 or nil end,
             getNextChapter = function(_, page) chapter_from.next = page; return page < 90 and 90 or nil end,
@@ -84,6 +86,56 @@ local function fixture(deferred)
     end
     return widget, bb, plugin, requested, chapter_from, tap, pending
 end
+
+test("saved circles snapshot the opening page and two distinct recent locations", function()
+    local back = {{xpointer = "5"}, {xpointer = "10"}, {xpointer = "90"}, {xpointer = "90"}, {xpointer = "26"}, {xpointer = "25"}}
+    local w, _, plugin = fixture(false, {location_stack = back})
+    equal(#w.saved_pages, 3)
+    equal(w.saved_pages[1], 25)
+    equal(w.saved_pages[2], 90)
+    equal(w.saved_pages[3], 10)
+    w.model:setPage(70, true)
+    equal(w.saved_pages[1], 25)
+    equal(w.saved_pages[2], 90)
+    equal(w.saved_pages[3], 10)
+    equal(#back, 6)
+    equal(plugin.committed, nil)
+    local other = fixture(false, {location_stack = {{xpointer = "0"}, {xpointer = "101"}},
+        forward_location_stack = {{{page = 100}}, {xpointer = "1"}, {xpointer = "25"}}})
+    equal(#other.saved_pages, 3)
+    equal(other.saved_pages[2], 1)
+    equal(other.saved_pages[3], 100)
+end)
+
+test("tapping and releasing near saved circles snaps only the preview to their exact pages", function()
+    local w, _, plugin = fixture(false, {location_stack = {{xpointer = "90"}}})
+    w:onShow()
+    w.model:setPage(70, true)
+    local y = w.slider.y + w.slider.h / 2
+    local function tapX(x)
+        w:onTapPlainNavigation(nil, {pos = Geom:new{x = x, y = y}})
+    end
+    tapX(w:sliderPageX(25) + 4)
+    equal(w.model.page, 25)
+    tapX(w:sliderPageX(90) - 4)
+    equal(w.model.page, 90)
+    local x = w:sliderPageX(25) + 4
+    w:onPanPlainNavigation(nil, {start_pos = Geom:new{x = w:sliderPageX(90), y = y}, pos = Geom:new{x = x, y = y}})
+    truthy(w.model.page ~= 25, "Continuous dragging must remain free")
+    w:onReleasePlainNavigation(nil, {pos = Geom:new{x = x, y = y}})
+    equal(w.model.page, 25)
+    tapX(w:sliderPageX(60))
+    equal(w.model.page, 60)
+    equal(w.model.origin, 25)
+    equal(plugin.committed, nil)
+    equal(#plugin.ui.link.location_stack, 1)
+    w.model.count, w.model.origin, w.model.page = 1, 1, 1
+    w.saved_pages = {1}
+    equal(w:sliderPageX(1), w.slider.x)
+    tapX(w.slider.x)
+    equal(w.model.page, 1)
+    w:onCloseWidget()
+end)
 
 test("page borders appear before thumbnails and stay visible through rapid jumps", function()
     local w, bb, plugin, requested, _, tap, pending = fixture(true)

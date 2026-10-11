@@ -93,6 +93,7 @@ function BottomNavigation:init()
             UIManager:setDirty(self, "ui", self.neighbor_visible_rects[offset])
         end,
     }
+    self.saved_pages = self:getSavedPages()
     self.ges_events = {}
     for name, gesture in pairs{
         TapPlainNavigation = "tap", SwipePlainNavigation = "swipe",
@@ -102,6 +103,54 @@ function BottomNavigation:init()
         IgnoreMultiswipePlainNavigation = "multiswipe",
     } do
         self.ges_events[name] = { GestureRange:new{ ges = gesture, range = self.dimen } }
+    end
+end
+
+function BottomNavigation:getSavedPages()
+    -- Kindle adds the reading position when opening Page Flip, then displays
+    -- recent history waypoints. Snapshot them so preview browsing cannot move
+    -- the saved circles or append intermediate previews to reading history.
+    local pages, seen = { self.model.origin }, { [self.model.origin] = true }
+    local ui, count = self.plugin.ui, self.model.count
+    local link = ui.link
+    if not link then return pages end
+    for _, stack in ipairs{ link.location_stack or {}, link.forward_location_stack or {} } do
+        for index = #stack, 1, -1 do
+            local location = stack[index]
+            local page
+            if location.xpointer then
+                page = ui.document:getPageFromXPointer(location.xpointer)
+            elseif location[1] then
+                page = location[1].page
+            end
+            local overlaps = false
+            if page and page >= 1 and page <= count and not seen[page] then
+                for _, saved in ipairs(pages) do
+                    if math.abs(self:sliderPageX(page) - self:sliderPageX(saved)) <= Screen:scaleBySize(14) then
+                        overlaps = true
+                        break
+                    end
+                end
+            end
+            -- Keep the newest point when two saved circles would overlap.
+            if page and page >= 1 and page <= count and not seen[page] and not overlaps then
+                pages[#pages + 1], seen[page] = page, true
+                if #pages == 3 then return pages end
+            end
+        end
+    end
+    return pages
+end
+
+function BottomNavigation:sliderPageX(page)
+    local ratio = self.model.count == 1 and 0 or (page - 1) / (self.model.count - 1)
+    return self.slider.x + math.floor(ratio * self.slider.w)
+end
+
+function BottomNavigation:drawCircle(bb, cx, cy, radius, color)
+    for dy = -radius, radius do
+        local half = math.floor(math.sqrt(radius * radius - dy * dy))
+        bb:paintRect(cx - half, cy + dy, 2 * half + 1, 1, color)
     end
 end
 
@@ -225,17 +274,14 @@ function BottomNavigation:paintTo(bb, x, y)
     local cy = self.slider.y + math.floor(self.slider.h / 2)
     local track_h = Screen:scaleBySize(6)
     bb:paintBorder(self.slider.x, cy - math.floor(track_h / 2), self.slider.w, track_h, line, Blitbuffer.COLOR_BLACK)
-    local cx = self.slider.x + math.floor(self.model:ratio() * self.slider.w)
+    for _, page in ipairs(self.saved_pages) do
+        self:drawCircle(bb, self:sliderPageX(page), cy, Screen:scaleBySize(7), Blitbuffer.COLOR_DARK_GRAY)
+    end
+    local cx = self:sliderPageX(self.model.page)
     local radius = Screen:scaleBySize(12)
-    for dy = -radius, radius do
-        local half = math.floor(math.sqrt(radius * radius - dy * dy))
-        bb:paintRect(cx - half, cy + dy, 2 * half + 1, 1, Blitbuffer.COLOR_BLACK)
-    end
+    self:drawCircle(bb, cx, cy, radius, Blitbuffer.COLOR_BLACK)
     local inner = radius - line
-    for dy = -inner, inner do
-        local half = math.floor(math.sqrt(inner * inner - dy * dy))
-        bb:paintRect(cx - half, cy + dy, 2 * half + 1, 1, Blitbuffer.COLOR_WHITE)
-    end
+    self:drawCircle(bb, cx, cy, inner, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
         and "← " .. self:pageLabel(self.model.origin) or "",
         self.origin_row.x, self.origin_row.y + Screen:scaleBySize(4), self.origin_row.w, "left", true, 14)
@@ -264,6 +310,16 @@ function BottomNavigation:selectNeighbor(offset)
 end
 
 function BottomNavigation:selectAt(x, immediate)
+    if immediate then
+        -- Snap taps and released drags to the nearest saved circle, preserving
+        -- its exact page instead of rounding a book-wide slider coordinate.
+        local closest, distance = nil, Screen:scaleBySize(10)
+        for _, page in ipairs(self.saved_pages) do
+            local delta = math.abs(x - self:sliderPageX(page))
+            if delta <= distance then closest, distance = page, delta end
+        end
+        if closest then self.model:setPage(closest, true); return end
+    end
     self.model:setRatio((x - self.slider.x) / self.slider.w, immediate)
 end
 
