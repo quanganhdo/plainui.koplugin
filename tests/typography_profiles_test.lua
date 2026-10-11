@@ -54,12 +54,36 @@ test("reset removes the snapshot and resumes following the profile", function()
     p:record(settings(30)); local result = p:reset()
     eq(result.size, 22); eq(p:isModified(), false); eq(p.book.variants.default.custom, nil)
 end)
-test("empty slots keep current appearance until explicitly saved", function()
+test("custom profiles start with all default settings and no marker", function()
     local p = fixture()
-    local result = p:select(2, settings())
-    truth(Profiles.equal(result, settings())); eq(p:profile().settings, nil)
-    eq(p:reset(), nil); truth(p:isModified())
+    p:record(settings(30))
+    for index = 2, 3 do
+        local result = p:select(index, p.current)
+        truth(Profiles.equal(result, settings())); truth(Profiles.equal(p:profile().settings, settings()))
+        eq(p:isModified(), false)
+        p:record(settings(28)); truth(p:isModified())
+        truth(Profiles.equal(p:reset(), settings())); eq(p:isModified(), false)
+    end
     p:save("Large", settings(29)); eq(p:isModified(), false)
+end)
+test("old empty profiles replace inherited snapshots but retain explicit edits", function()
+    local p, global, book = fixture(settings(30))
+    local store = global.data[Profiles.GLOBAL_KEY]
+    store.profiles[2].settings, store.profiles[3].settings = nil, nil
+    local old_book = book.data[Profiles.BOOK_KEY]
+    old_book.active = "profile_2"
+    old_book.variants.profile_2 = { last_applied = settings(30), custom = settings(30) }
+    old_book.variants.profile_3 = { last_applied = settings(32), custom = settings(32) }
+    local reopened = Profiles.new(global, book, settings(), settings(30))
+    eq(reopened.active, 2); eq(reopened.current.size, 22); eq(reopened:isModified(), false)
+    truth(Profiles.equal(reopened:profile(3).settings, settings()))
+    reopened:select(3, settings()); eq(reopened.current.size, 32); truth(reopened:isModified())
+end)
+test("saving Everyday does not alter the independent custom profile baselines", function()
+    local p = fixture()
+    p:save("Everyday", settings(30))
+    eq(p:select(2, settings(30)).size, 22); eq(p:isModified(), false)
+    p.current.margins[1] = 999; eq(p:profile(3).settings.margins[1], 10)
 end)
 test("saving a profile updates followers on next open", function()
     local p, global = fixture()

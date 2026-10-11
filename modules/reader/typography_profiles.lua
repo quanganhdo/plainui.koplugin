@@ -38,11 +38,12 @@ function Profiles.new(global_settings, book_settings, defaults, current)
     if type(store) ~= "table" or store.version ~= 1 or type(store.profiles) ~= "table" then
         store = { version = 1, profiles = {
             { id = IDS[1], name = "Everyday", settings = copy(defaults) },
-            { id = IDS[2], name = "Custom 1" },
-            { id = IDS[3], name = "Custom 2" },
+            { id = IDS[2], name = "Custom 1", settings = copy(defaults) },
+            { id = IDS[3], name = "Custom 2", settings = copy(defaults) },
         } }
     end
     self.store = copy(store)
+    local initialized = {}
     for index, id in ipairs(IDS) do
         local profile = self.store.profiles[index]
         if type(profile) ~= "table" then profile = {}; self.store.profiles[index] = profile end
@@ -50,7 +51,10 @@ function Profiles.new(global_settings, book_settings, defaults, current)
         if type(profile.name) ~= "string" or profile.name == "" then
             profile.name = index == 1 and "Everyday" or "Custom " .. (index - 1)
         end
-        if not self.valid(profile.settings) then profile.settings = index == 1 and copy(defaults) or nil end
+        if not self.valid(profile.settings) then
+            profile.settings = copy(defaults)
+            initialized[index] = true
+        end
     end
     global_settings:saveSetting(self.GLOBAL_KEY, copy(self.store))
     local book = book_settings:readSetting(self.BOOK_KEY)
@@ -58,6 +62,18 @@ function Profiles.new(global_settings, book_settings, defaults, current)
         book = { version = 1, active = IDS[1], variants = {} }
     end
     self.book = copy(book)
+    -- Older empty slots inherited the departing book appearance and immediately
+    -- showed '*'. Replace those inherited snapshots with the new default preset,
+    -- while retaining settings that the book actually changed in that slot.
+    local first = self.book.variants[IDS[1]]
+    for index = 2, #IDS do
+        local variant = self.book.variants[IDS[index]]
+        if initialized[index] and type(variant) == "table" and type(first) == "table"
+                and self.valid(variant.custom) and self.valid(first.last_applied)
+                and self.equal(variant.custom, first.last_applied) then
+            variant.custom = nil
+        end
+    end
     self.active = 1
     for index, id in ipairs(IDS) do if book.active == id then self.active = index end end
     self.book.active = IDS[self.active]

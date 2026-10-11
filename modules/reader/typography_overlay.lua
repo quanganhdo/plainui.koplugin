@@ -83,10 +83,23 @@ local function getDocumentFontFace(ui, size)
     return getPrimaryValueFace(size)
 end
 
+local FontNameText = TextWidget:extend{}
+
+function FontNameText:updateSize()
+    if self._updated then return end
+    TextWidget.updateSize(self)
+    -- Font line metrics include uneven blank space above/below the glyphs.
+    -- Center the visible name itself, alongside the centered chevron.
+    local metrics = require("ui/rendertext"):sizeUtf8Text(
+        0, self.max_width, self.face, self._text_to_draw or self.text, true, self.bold)
+    self._height = metrics.y_top + metrics.y_bottom
+    self._baseline_h = metrics.y_top
+end
+
 local FontNameButton = InputContainer:extend{}
 
 function FontNameButton:init()
-    self.text_widget = TextWidget:new{
+    self.text_widget = FontNameText:new{
         text = self.text,
         face = self.face,
         max_width = self.max_width,
