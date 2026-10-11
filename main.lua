@@ -46,16 +46,8 @@ function PlainUI:isRollingReader()
     return self.ui ~= nil and self.ui.rolling ~= nil
 end
 
-function PlainUI:isReaderEnabled()
-    if not G_reader_settings then return true end
-    if G_reader_settings.isFalse then
-        return not G_reader_settings:isFalse("plainui_reader_enabled")
-    end
-    return G_reader_settings:readSetting("plainui_reader_enabled") ~= false
-end
-
 function PlainUI:getReaderController()
-    if not self:isReaderEnabled() or not self:isRollingReader() then
+    if not self:isRollingReader() then
         return nil
     end
     if not self.reader_controller then

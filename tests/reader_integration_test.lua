@@ -470,6 +470,8 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
         local PlainUI = assert(loadfile("main.lua"))()
         local file_manager_plugin = setmetatable({ ui = {} }, PlainUI)
         assertEqual(file_manager_plugin:getReaderController(), nil)
+        local fixed_layout_plugin = setmetatable({ ui = { paging = {} } }, PlainUI)
+        assertEqual(fixed_layout_plugin:getReaderController(), nil)
 
         local reader_plugin = setmetatable({ path = "/plugin", ui = { rolling = {} } }, PlainUI)
         assertTruthy(reader_plugin:getReaderController())
@@ -486,8 +488,12 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
         assertEqual(controller_stops, 1)
         assertEqual(reader_plugin.reader_controller, nil)
         local original_settings = G_reader_settings
-        G_reader_settings = { isFalse = function(_, key) return key == "plainui_reader_enabled" end }
-        assertEqual(reader_plugin:getReaderController(), nil)
+        G_reader_settings = {
+            isFalse = function(_, key) return key == "plainui_reader_enabled" end,
+            readSetting = function(_, key) if key == "plainui_reader_enabled" then return false end end,
+        }
+        assertTruthy(reader_plugin:getReaderController())
+        assertEqual(controller_creations, 2)
         G_reader_settings = original_settings
     end)
 end)

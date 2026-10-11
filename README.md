@@ -17,18 +17,10 @@ Copy `plainui.koplugin` into KOReader's `plugins` folder, enable the CoverBrowse
 
 ## Configuration
 
-Add these optional settings to the existing table in KOReader's `settings.reader.lua`, then restart KOReader.
-
-To enlarge cover badges (default size: `13`):
+To enlarge cover badges (default size: `13`), add this entry to the existing table in KOReader's `settings.reader.lua`, then restart KOReader:
 
 ```lua
 ["plainui_badge_font_size"] = 15,
-```
-
-To keep the library interface and use KOReader's native reader controls:
-
-```lua
-["plainui_reader_enabled"] = false,
 ```
 
 ## Credits
