@@ -509,8 +509,8 @@ function TypographyOverlay:init()
             math.floor(screen_height * 0.25),
             Screen:scaleBySize(220)
         )
-        local base_panel_height = 6 * row_height
-            + 4 * row_gap
+        local base_panel_height = 7 * row_height
+            + 5 * row_gap
             + expanded_value_gap
             + content_padding_top
             + content_padding_bottom
@@ -723,6 +723,26 @@ function TypographyOverlay:init()
         value_gap = slider_options.value_gap,
         value = configurable.font_size,
     }
+    local font_weight_slider = newSliderControl{
+        button_width = slider_options.button_width,
+        callback = function(value)
+            self:scheduleTypographyChange(function() self:applyFontWeight(value) end)
+        end,
+        gap = slider_options.gap,
+        label = _("Font Weight"),
+        label_width = slider_options.label_width,
+        maximum = 5.5,
+        minimum = -3,
+        progress_width = slider_options.progress_width,
+        row_height = slider_options.row_height,
+        show_parent = self,
+        step = 0.25,
+        value_gap = slider_options.value_gap,
+        value_formatter = function(value)
+            return value > 0 and string.format("+%g", value) or formatRawValue(value)
+        end,
+        value = configurable.font_base_weight or 0,
+    }
     local line_spacing_slider = newSliderControl{
         button_width = slider_options.button_width,
         callback = function(value)
@@ -760,6 +780,7 @@ function TypographyOverlay:init()
     }
     self.slider_controls = {
         font_size_slider,
+        font_weight_slider,
         line_spacing_slider,
         margins_slider,
     }
@@ -862,6 +883,8 @@ function TypographyOverlay:init()
     table.insert(content_children, VerticalSpan:new{ width = font_size_gap })
     table.insert(content_children, font_size_slider.widget)
     table.insert(content_children, VerticalSpan:new{ width = row_gap })
+    table.insert(content_children, font_weight_slider.widget)
+    table.insert(content_children, VerticalSpan:new{ width = row_gap })
     table.insert(content_children, line_spacing_slider.widget)
     table.insert(content_children, VerticalSpan:new{ width = row_gap })
     table.insert(content_children, margins_slider.widget)
@@ -944,6 +967,13 @@ function TypographyOverlay:applyLineSpacing(value, refresh_emphasis)
     end
 end
 
+function TypographyOverlay:applyFontWeight(value, refresh_emphasis)
+    self.plugin.ui.font:onSetFontBaseWeight(value)
+    if refresh_emphasis ~= false then
+        self:refreshUseDefaultsEmphasis()
+    end
+end
+
 function TypographyOverlay:applyMargins(value, refresh_emphasis)
     local margins = { value, value }
     self.plugin.ui.document.configurable.h_page_margins = margins
@@ -973,6 +1003,7 @@ function TypographyOverlay:settingsMatchDefaults()
         or ui.document.default_font
     local default_size = G_reader_settings:readSetting("copt_font_size")
         or configurable.font_size
+    local default_weight = G_reader_settings:readSetting("copt_font_base_weight") or 0
     local default_spacing = G_reader_settings:readSetting("copt_line_spacing")
         or configurable.line_spacing
     local default_margins = G_reader_settings:readSetting("copt_h_page_margins")
@@ -981,6 +1012,7 @@ function TypographyOverlay:settingsMatchDefaults()
 
     return ui.font.font_face == default_font
         and valuesMatch(configurable.font_size, default_size)
+        and valuesMatch(configurable.font_base_weight, default_weight)
         and valuesMatch(configurable.line_spacing, default_spacing)
         and type(current_margins) == "table"
         and type(default_margins) == "table"
@@ -1082,6 +1114,7 @@ function TypographyOverlay:applyDefaults()
         or ui.document.default_font
     local font_size = G_reader_settings:readSetting("copt_font_size")
         or configurable.font_size
+    local font_weight = G_reader_settings:readSetting("copt_font_base_weight") or 0
     local line_spacing = G_reader_settings:readSetting("copt_line_spacing")
         or configurable.line_spacing
     local margins = G_reader_settings:readSetting("copt_h_page_margins")
@@ -1092,6 +1125,9 @@ function TypographyOverlay:applyDefaults()
     end
     if not valuesMatch(configurable.font_size, font_size) then
         self:applyFontSize(font_size, false)
+    end
+    if not valuesMatch(configurable.font_base_weight, font_weight) then
+        self:applyFontWeight(font_weight, false)
     end
     if not valuesMatch(configurable.line_spacing, line_spacing) then
         self:applyLineSpacing(line_spacing, false)
@@ -1117,9 +1153,10 @@ function TypographyOverlay:applyDefaults()
     end
 
     self.slider_controls[1].setValue(font_size, false)
-    self.slider_controls[2].setValue(line_spacing, false)
+    self.slider_controls[2].setValue(font_weight, false)
+    self.slider_controls[3].setValue(line_spacing, false)
     if type(margins) == "table" and margins[1] and margins[2] then
-        self.slider_controls[3].setValue(Math.round((margins[1] + margins[2]) / 2), false)
+        self.slider_controls[4].setValue(Math.round((margins[1] + margins[2]) / 2), false)
     end
 
     for _, preview_item in ipairs(self.font_preview_items) do
@@ -1163,6 +1200,7 @@ function TypographyOverlay:saveDefaults()
     local configurable = ui.document.configurable
     G_reader_settings:saveSetting("cre_font", ui.font.font_face)
     G_reader_settings:saveSetting("copt_font_size", configurable.font_size)
+    G_reader_settings:saveSetting("copt_font_base_weight", configurable.font_base_weight or 0)
     G_reader_settings:saveSetting("copt_line_spacing", configurable.line_spacing)
     G_reader_settings:saveSetting("copt_h_page_margins", configurable.h_page_margins)
 
