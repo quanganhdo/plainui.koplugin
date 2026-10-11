@@ -32,7 +32,7 @@ end}
 package.loaded["gettext"] = function(t) return t end
 package.loaded["ui/widget/textwidget"] = {new = function(_, t)
     function t:getSize() return {w = math.min(self.max_width, #self.text * 6), h = 16} end
-    function t:paintTo() end
+    function t:paintTo(_, x, y) self.x, self.y = x, y end
     function t:free() end
     return t
 end}
@@ -82,24 +82,27 @@ local function fixture()
     return widget, bb, plugin, requested, chapter_from, tap
 end
 
-test("preview image fits inside four-sided border and backdrop is captured once", function()
+test("carousel images fit inside their borders and the selected card stays centered", function()
     local w, bb = fixture()
     w:onShow()
     w:paintTo(bb, 0, 0)
     local image, border, image_index, border_index
     for i, call in ipairs(bb.calls) do
-        if call.kind == "image" then image, image_index = call, i
-        elseif call.kind == "border" and call.w == w.preview_rect.w then border, border_index = call, i end
+        if call.kind == "image" and call.x > 0 and call.x < w.preview_rect.x + w.preview_rect.w then image, image_index = call, i
+        elseif call.kind == "border" and call.x == w.preview_rect.x then border, border_index = call, i end
     end
     truthy(image and border)
     truthy(border_index > image_index, "Image must not overwrite page border")
     truthy(image.x > border.x and image.y > border.y)
     truthy(image.x + image.w < border.x + border.w and image.y + image.h < border.y + border.h)
-    w:paintTo(bb, 0, 0)
-    equal(bb.copies, 1)
-    local background = w.background
+    equal(w.preview_rect.y, math.floor((w.bar.y - w.preview_rect.h) / 2))
+    truthy(w.neighbor_rects[-1].x < 0)
+    truthy(w.neighbor_rects[1].x + w.neighbor_rects[1].w > w.dimen.w)
+    truthy(w.neighbor_images[-1] and w.neighbor_images[1])
+    local left, right = w.neighbor_images[-1].image, w.neighbor_images[1].image
     w:onCloseWidget()
-    equal(background.freed, true)
+    equal(left.freed, true)
+    equal(right.freed, true)
 end)
 
 test("chapter buttons navigate from preview page without committing a reading jump", function()
@@ -113,6 +116,8 @@ test("chapter buttons navigate from preview page without committing a reading ju
     equal(plugin.committed, nil)
     w:paintTo(bb, 0, 0)
     equal(w.labels.chapter.text, "Chapter Two")
+    equal(w.labels.chapter.y + w.labels.chapter:getSize().h / 2,
+        w.chapter_row.y + w.chapter_row.h / 2)
     equal(w.labels.page_count.text, "Page 90 of 100")
     local count = #requested
     tap(w.next_chapter_button)
@@ -124,16 +129,30 @@ test("chapter buttons navigate from preview page without committing a reading ju
     w:onCloseWidget()
 end)
 
-test("page controls and close control cannot accidentally commit the preview", function()
+test("neighbor previews center pages and close cannot commit a reading jump", function()
     local w, _, plugin, _, _, tap = fixture()
     w:onShow()
-    tap(w.next_page_button)
+    tap(w.neighbor_visible_rects[1])
     equal(w.model.page, 26)
     equal(plugin.committed, nil)
-    tap(w.previous_page_button)
+    tap(w.neighbor_visible_rects[-1])
     equal(w.model.page, 25)
     tap(w.close_button)
     equal(plugin.closed, true)
+    equal(plugin.committed, nil)
+    w:onCloseWidget()
+end)
+
+test("stale or unavailable neighboring previews do not select a different page", function()
+    local w, _, plugin, _, _, tap = fixture()
+    w:onShow()
+    w.model.ready = false
+    tap(w.neighbor_visible_rects[1])
+    equal(w.model.page, 25)
+    w.model.ready = true
+    w.neighbor_images[1].page = 99
+    tap(w.neighbor_visible_rects[1])
+    equal(w.model.page, 25)
     equal(plugin.committed, nil)
     w:onCloseWidget()
 end)

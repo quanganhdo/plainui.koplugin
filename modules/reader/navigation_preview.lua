@@ -16,6 +16,7 @@ function Preview.new(options)
         height = options.height,
         changed = options.changed,
         rendered = options.rendered,
+        rendered_neighbor = options.rendered_neighbor,
         sequence = 0,
         ready = false,
     }, Preview)
@@ -37,12 +38,29 @@ function Preview:request()
     self:cancel()
     local sequence, page = self.sequence, self.page
     self.batch = tostring(self) .. ":" .. sequence
-    self.thumbnail:getPageThumbnail(page, self.width, self.height, self.batch,
+    local batch = self.batch
+    self.thumbnail:getPageThumbnail(page, self.width, self.height, batch,
         function(tile)
             if self.closed or sequence ~= self.sequence or page ~= self.page then return end
             self.ready = tile ~= nil
             self.rendered(tile, page)
+            -- Render the center first so adjacent pages never delay it.
+            if tile then self:requestNeighbors(sequence, page, batch) end
         end)
+end
+
+function Preview:requestNeighbors(sequence, page, batch)
+    if not self.rendered_neighbor or self.closed or sequence ~= self.sequence then return end
+    for _, offset in ipairs{ -1, 1 } do
+        local neighbor_page = page + offset
+        if neighbor_page >= 1 and neighbor_page <= self.count then
+            self.thumbnail:getPageThumbnail(neighbor_page, self.width, self.height, batch,
+                function(tile)
+                    if self.closed or sequence ~= self.sequence or page ~= self.page then return end
+                    self.rendered_neighbor(tile, offset, neighbor_page)
+                end)
+        end
+    end
 end
 
 function Preview:setPage(page, immediate)
