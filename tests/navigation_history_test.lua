@@ -84,6 +84,7 @@ test("push waits for navigation and opens one footer", function()
     ui.current = "20"
     tick()
     truthy(history.footer)
+    equal(history.footer.active_widgets[1], ui)
     equal(#shown, 1)
     history:install()
     ui.link:addCurrentLocationToStack()

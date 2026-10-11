@@ -24,7 +24,9 @@ function ReturnFooter:init()
         w = Screen:getWidth(), h = ReturnStyle.height,
     }
     self.ges_events = {
-        TapPlainReturnFooter = { GestureRange:new{ ges = "tap", range = self.dimen } },
+        TapPlainReturnFooter = { GestureRange:new{ ges = "tap", range = Geom:new{
+            x = 0, y = 0, w = Screen:getWidth(), h = Screen:getHeight(),
+        } } },
         -- Gestures inside the footer must not also turn a page or open a menu.
         IgnorePlainReturnFooter = {
             GestureRange:new{ ges = "hold", range = self.dimen },
@@ -75,6 +77,13 @@ function ReturnFooter:paintTo(bb, x, y)
 end
 
 function ReturnFooter:onTapPlainReturnFooter(_, ges)
+    local pos, rect = ges.pos, self.dimen
+    if pos.x < rect.x or pos.x >= rect.x + rect.w
+            or pos.y < rect.y or pos.y >= rect.y + rect.h then
+        self.history:stayHere()
+        -- Let the same tap reach the reader after dismissing the footer.
+        return
+    end
     -- Re-read destinations in case a page turn happened since the last paint.
     local back, forward = self.history:getDestinations()
     local slot = math.floor((ges.pos.x - self.dimen.x) * 3 / self.dimen.w) + 1

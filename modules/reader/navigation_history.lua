@@ -127,6 +127,9 @@ function NavigationHistory:refresh()
     local Footer = require("modules.reader.return_footer")
     self.footer = Footer:new{ history = self }
     local reader = self.ui.dialog or self.ui
+    -- UIManager otherwise sends input only to the top window. Keep normal
+    -- reader gestures and controls reachable whenever the footer declines it.
+    self.footer.active_widgets = { reader }
     self.footer.disable_double_tap = reader.disable_double_tap
     self.footer.allow_concurrent_taps = reader.allow_concurrent_taps
     self.footer.tap_interval_override = reader.tap_interval_override
