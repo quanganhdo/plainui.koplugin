@@ -93,7 +93,9 @@ function BottomNavigation:init()
             UIManager:setDirty(self, "ui", self.neighbor_visible_rects[offset])
         end,
     }
-    self.saved_pages = self:getSavedPages()
+    -- Only the opening position is a saved marker; reading history belongs
+    -- to the separate Back/Forward return footer.
+    self.saved_pages = { self.model.origin }
     self.ges_events = {}
     for name, gesture in pairs{
         TapPlainNavigation = "tap", SwipePlainNavigation = "swipe",
@@ -104,42 +106,6 @@ function BottomNavigation:init()
     } do
         self.ges_events[name] = { GestureRange:new{ ges = gesture, range = self.dimen } }
     end
-end
-
-function BottomNavigation:getSavedPages()
-    -- Kindle adds the reading position when opening Page Flip, then displays
-    -- recent history waypoints. Snapshot them so preview browsing cannot move
-    -- the saved circles or append intermediate previews to reading history.
-    local pages, seen = { self.model.origin }, { [self.model.origin] = true }
-    local ui, count = self.plugin.ui, self.model.count
-    local link = ui.link
-    if not link then return pages end
-    for _, stack in ipairs{ link.location_stack or {}, link.forward_location_stack or {} } do
-        for index = #stack, 1, -1 do
-            local location = stack[index]
-            local page
-            if location.xpointer then
-                page = ui.document:getPageFromXPointer(location.xpointer)
-            elseif location[1] then
-                page = location[1].page
-            end
-            local overlaps = false
-            if page and page >= 1 and page <= count and not seen[page] then
-                for _, saved in ipairs(pages) do
-                    if math.abs(self:sliderPageX(page) - self:sliderPageX(saved)) <= Screen:scaleBySize(14) then
-                        overlaps = true
-                        break
-                    end
-                end
-            end
-            -- Keep the newest point when two saved circles would overlap.
-            if page and page >= 1 and page <= count and not seen[page] and not overlaps then
-                pages[#pages + 1], seen[page] = page, true
-                if #pages == 3 then return pages end
-            end
-        end
-    end
-    return pages
 end
 
 function BottomNavigation:sliderPageX(page)

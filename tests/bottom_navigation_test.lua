@@ -87,27 +87,23 @@ local function fixture(deferred, link)
     return widget, bb, plugin, requested, chapter_from, tap, pending
 end
 
-test("saved circles snapshot the opening page and two distinct recent locations", function()
+test("the saved circle marks only the opening page regardless of navigation history", function()
     local back = {{xpointer = "5"}, {xpointer = "10"}, {xpointer = "90"}, {xpointer = "90"}, {xpointer = "26"}, {xpointer = "25"}}
     local w, _, plugin = fixture(false, {location_stack = back})
-    equal(#w.saved_pages, 3)
+    equal(#w.saved_pages, 1)
     equal(w.saved_pages[1], 25)
-    equal(w.saved_pages[2], 90)
-    equal(w.saved_pages[3], 10)
     w.model:setPage(70, true)
+    equal(#w.saved_pages, 1)
     equal(w.saved_pages[1], 25)
-    equal(w.saved_pages[2], 90)
-    equal(w.saved_pages[3], 10)
     equal(#back, 6)
     equal(plugin.committed, nil)
     local other = fixture(false, {location_stack = {{xpointer = "0"}, {xpointer = "101"}},
         forward_location_stack = {{{page = 100}}, {xpointer = "1"}, {xpointer = "25"}}})
-    equal(#other.saved_pages, 3)
-    equal(other.saved_pages[2], 1)
-    equal(other.saved_pages[3], 100)
+    equal(#other.saved_pages, 1)
+    equal(other.saved_pages[1], 25)
 end)
 
-test("tapping and releasing near saved circles snaps only the preview to their exact pages", function()
+test("taps and released drags snap to the opening circle but not navigation history", function()
     local w, _, plugin = fixture(false, {location_stack = {{xpointer = "90"}}})
     w:onShow()
     w.model:setPage(70, true)
@@ -118,7 +114,7 @@ test("tapping and releasing near saved circles snaps only the preview to their e
     tapX(w:sliderPageX(25) + 4)
     equal(w.model.page, 25)
     tapX(w:sliderPageX(90) - 4)
-    equal(w.model.page, 90)
+    equal(w.model.page, 89)
     local x = w:sliderPageX(25) + 4
     w:onPanPlainNavigation(nil, {start_pos = Geom:new{x = w:sliderPageX(90), y = y}, pos = Geom:new{x = x, y = y}})
     truthy(w.model.page ~= 25, "Continuous dragging must remain free")
