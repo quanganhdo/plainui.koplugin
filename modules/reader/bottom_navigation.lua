@@ -42,8 +42,10 @@ function BottomNavigation:init()
         y = actions_y, w = button_w, h = button_h }
     self.toc_button = Geom:new{ x = self.search_button.x - button_gap - button_w,
         y = actions_y, w = button_w, h = button_h }
+    self.bookmarks_button = Geom:new{ x = self.toc_button.x - button_gap - button_w,
+        y = actions_y, w = button_w, h = button_h }
     self.origin_row = Geom:new{ x = self.padding, y = actions_y,
-        w = self.toc_button.x - button_gap - self.padding, h = button_h }
+        w = self.bookmarks_button.x - button_gap - self.padding, h = button_h }
     self.chevron = Geom:new{ x = 0, y = self.origin_row.y + self.origin_row.h,
         w = w, h = h - self.origin_row.y - self.origin_row.h }
     -- The selected page is centered between the header and bar; adjacent pages extend
@@ -73,7 +75,7 @@ function BottomNavigation:init()
     self.icons = {}
     for id, file in pairs{
         previous_chapter = "player-skip-back.svg", next_chapter = "player-skip-forward.svg",
-        toc = "list-details.svg", search = "search.svg",
+        bookmarks = "bookmark.svg", toc = "list-details.svg", search = "search.svg",
     } do
         self.icons[id] = ImageWidget:new{
             file = self.plugin.path .. "/icons/tabler/" .. file,
@@ -269,6 +271,7 @@ function BottomNavigation:paintTo(bb, x, y)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
         and "← " .. self:pageLabel(self.model.origin) or "",
         self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, 18, self.origin_row.h)
+    self:drawToolbarIcon(bb, "bookmarks", self.bookmarks_button)
     self:drawToolbarIcon(bb, "toc", self.toc_button)
     self:drawToolbarIcon(bb, "search", self.search_button)
     -- Match the top toolbar's drag chevron, reflected vertically.
@@ -311,6 +314,7 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     if pos:intersectWith(self.chevron) then self.plugin:showFullConfigMenu()
     elseif pos:intersectWith(self.slider) then self:selectAt(pos.x, true)
     elseif pos:intersectWith(self.close_button) then self.plugin:closeBottomNavigation()
+    elseif pos:intersectWith(self.bookmarks_button) then self.plugin:showBookmarks()
     elseif pos:intersectWith(self.toc_button) then self.plugin:showTableOfContents()
     elseif pos:intersectWith(self.search_button) then self.plugin:showFulltextSearch()
     elseif pos:intersectWith(self.previous_chapter_button) then

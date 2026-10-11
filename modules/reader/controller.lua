@@ -277,6 +277,13 @@ function Controller:showDefaultMenu()
     self.ui:handleEvent(Event:new("ShowMenu"))
 end
 
+function Controller:showBookmarks()
+    self:closeReadingStatsPopup()
+    self:closeBottomNavigation()
+    self:closeOverlay()
+    self.ui:handleEvent(Event:new("ShowBookmark"))
+end
+
 function Controller:showTableOfContents()
     self:closeReadingStatsPopup()
     self:closeBottomNavigation()

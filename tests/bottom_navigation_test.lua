@@ -75,6 +75,7 @@ local function fixture(deferred, link)
     }
     local plugin = {ui = ui, path = ".", closeBottomNavigation = function(self) self.closed = true end,
         commitNavigationPreview = function(self, page) self.committed = page end,
+        showBookmarks = function(self) self.bookmarks_opened = true end,
         showTableOfContents = function(self) self.toc_opened = true end,
         showFulltextSearch = function(self) self.search_opened = true end}
     local widget = Widget:new{plugin = plugin}
@@ -207,28 +208,33 @@ test("carousel images fit inside their borders and the selected card stays cente
     equal(right.freed, true)
 end)
 
-test("bottom actions share toolbar sizing and open TOC or Search without a preview jump", function()
+test("bottom actions share toolbar sizing and open Bookmarks, TOC or Search without a preview jump", function()
     local w, bb, plugin, _, _, tap = fixture()
     w:onShow()
     w:paintTo(bb, 0, 0)
     local style = require("modules.shared.toolbar_style")
-    for _, r in ipairs{w.previous_chapter_button, w.next_chapter_button, w.toc_button, w.search_button} do
+    for _, r in ipairs{w.previous_chapter_button, w.next_chapter_button, w.bookmarks_button, w.toc_button, w.search_button} do
         equal(r.w, style.button_width)
         equal(r.h, style.button_height)
     end
+    equal(w.bookmarks_button.y, w.origin_row.y)
     equal(w.toc_button.y, w.origin_row.y)
     equal(w.search_button.y, w.origin_row.y)
-    truthy(w.origin_row.x + w.origin_row.w < w.toc_button.x)
+    truthy(w.origin_row.x + w.origin_row.w < w.bookmarks_button.x)
+    equal(w.bookmarks_button.x + w.bookmarks_button.w + style.button_gap, w.toc_button.x)
     equal(w.labels.percent, nil)
+    equal(w.icons.bookmarks.width, style.icon_size)
     equal(w.icons.toc.width, style.icon_size)
     equal(w.icons.search.height, style.icon_size)
+    tap(w.bookmarks_button)
+    equal(plugin.bookmarks_opened, true)
     tap(w.toc_button)
     equal(plugin.toc_opened, true)
     tap(w.search_button)
     equal(plugin.search_opened, true)
     equal(plugin.committed, nil)
     equal(w.model.page, w.model.origin)
-    local icon = w.icons.toc
+    local icon = w.icons.bookmarks
     w:onCloseWidget()
     equal(icon.freed, true)
 end)

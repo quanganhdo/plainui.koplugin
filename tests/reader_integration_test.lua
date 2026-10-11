@@ -577,7 +577,7 @@ test("bottom menu hooks open previews and chevron bypasses the hook", function()
     package.loaded["modules.reader.controller"] = nil
 end)
 
-test("TOC and Search replace the preview before opening their native panels", function()
+test("Bookmarks, TOC and Search replace the preview before opening their native panels", function()
     local actions = {}
     withModules({
         ["ui/event"] = {new = function(_, name) return {name = name} end},
@@ -588,7 +588,7 @@ test("TOC and Search replace the preview before opening their native panels", fu
         local c = require("modules.reader.controller").new({path = "/plugin"}, {
             handleEvent = function(_, event) actions[#actions + 1] = event.name end,
         })
-        for _, pair in ipairs{{"showTableOfContents", "ShowToc"}, {"showFulltextSearch", "ShowFulltextSearchInput"}} do
+        for _, pair in ipairs{{"showBookmarks", "ShowBookmark"}, {"showTableOfContents", "ShowToc"}, {"showFulltextSearch", "ShowFulltextSearchInput"}} do
             actions = {}
             c.bottom_navigation = {name = "preview"}
             c.overlay = {name = "toolbar"}
