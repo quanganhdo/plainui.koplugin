@@ -4,7 +4,6 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local Button = require("ui/widget/button")
 local CenterContainer = require("ui/widget/container/centercontainer")
-local ConfirmBox = require("ui/widget/confirmbox")
 local Device = require("device")
 local Event = require("ui/event")
 local Font = require("ui/font")
@@ -15,37 +14,26 @@ local HorizontalGroup = require("ui/widget/horizontalgroup")
 local HorizontalSpan = require("ui/widget/horizontalspan")
 local IconButton = require("ui/widget/iconbutton")
 local InputContainer = require("ui/widget/container/inputcontainer")
+local InputDialog = require("ui/widget/inputdialog")
 local LeftContainer = require("ui/widget/container/leftcontainer")
 local LineWidget = require("ui/widget/linewidget")
 local Math = require("optmath")
 local Notification = require("ui/widget/notification")
 local OverlapGroup = require("ui/widget/overlapgroup")
 local ProgressWidget = require("ui/widget/progresswidget")
+local ProfileTabs = require("modules.reader.profile_tabs")
 local RightContainer = require("ui/widget/container/rightcontainer")
 local Screen = Device.screen
 local Size = require("ui/size")
 local TextWidget = require("ui/widget/textwidget")
+local TextBoxWidget = require("ui/widget/textboxwidget")
+local TypographySettings = require("modules.reader.typography_settings")
 local TopContainer = require("ui/widget/container/topcontainer")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local _ = require("gettext")
 local C_ = _.pgettext
-
-local OpticalCenterContainer = CenterContainer:extend{
-    y_offset = 0,
-}
-
-function OpticalCenterContainer:paintTo(bb, x, y)
-    return CenterContainer.paintTo(self, bb, x, y + self.y_offset)
-end
-
-local ALIGNMENT_TWEAKS = {
-    "text_align_most_left",
-    "text_align_all_left",
-    "text_align_most_justify",
-    "text_align_all_justify",
-}
 
 local COMMON_ALIGNMENT_CSS = {
     text_align_most_left = [[
@@ -71,10 +59,6 @@ end
 
 local function roundToStep(value, minimum, step)
     return minimum + Math.round((value - minimum) / step) * step
-end
-
-local function valuesMatch(left, right)
-    return math.abs((tonumber(left) or 0) - (tonumber(right) or 0)) < 0.001
 end
 
 local function formatRawValue(value)
@@ -440,7 +424,7 @@ function TypographyOverlay:selectPreviewFont(entry)
         or getPrimaryValueFace(19)
     self.font_name_button:setFont(self.plugin.ui.font.font_face, face)
     self.font_value_group:resetLayout()
-    self:refreshUseDefaultsEmphasis()
+    self:refreshProfileState()
     UIManager:setDirty(self, function()
         return "ui", self.font_value.dimen or self.panel.dimen
     end)
@@ -457,6 +441,7 @@ function TypographyOverlay:applyTypographyChange(callback)
     -- typography change appear to turn a page.  Match KOReader's native
     -- controls: leave the saved xpointer untouched and only request reflow.
     callback()
+    self:refreshProfileState()
 end
 
 function TypographyOverlay:scheduleTypographyChange(callback)
@@ -471,9 +456,15 @@ function TypographyOverlay:init()
     self.installCommonAlignmentTweaks(self.plugin.ui, false)
     self.font_picker_expanded = self.font_picker_expanded == true
     self.font_preview_items = {}
+    self.profiles = assert(self.plugin:ensureTypographyProfiles())
     local screen_width = Screen:getWidth()
     local screen_height = Screen:getHeight()
     local top_offset = self.top_offset or 0
+    local tab_height = self.plugin.overlay and self.plugin.overlay.book_title_frame:getSize().h
+        or Size.item.height_big
+    self.profile_tabs = ProfileTabs.create(self.profiles, tab_height,
+        function(index) self:selectProfile(index) end,
+        function(index) self:renameProfile(index) end)
     local horizontal_padding = Size.padding.large
     local content_width = screen_width - 2 * horizontal_padding
     local row_height = Size.item.height_big
@@ -522,6 +513,7 @@ function TypographyOverlay:init()
             + 2 * (component_border + component_padding)
         local available_rows_height = screen_height
             - top_offset
+            - tab_height
             - preview_reserve
             - fixed_expanded_height
         local font_rows = clamp(math.floor(available_rows_height / row_height), 1, 4)
@@ -670,9 +662,8 @@ function TypographyOverlay:init()
         show_parent = self,
         callback = toggleFontPicker,
     }
-    local font_chevron_container = OpticalCenterContainer:new{
+    local font_chevron_container = CenterContainer:new{
         dimen = Geom:new{ w = font_chevron_width, h = row_height },
-        y_offset = self.font_picker_expanded and 0 or -Screen:scaleBySize(3),
         font_chevron,
     }
     local font_value_group = HorizontalGroup:new{
@@ -835,8 +826,8 @@ function TypographyOverlay:init()
 
     local action_gap = Screen:scaleBySize(10)
     local action_button_width = math.floor((content_width - action_gap) / 2)
-    local use_defaults_button = Button:new{
-        text = _("Use defaults"),
+    local reset_button = Button:new{
+        text = _("Reset"),
         width = action_button_width,
         height = action_height,
         bordersize = Size.border.thin,
@@ -844,15 +835,16 @@ function TypographyOverlay:init()
         padding_v = 0,
         text_font_face = "cfont",
         text_font_size = 17,
-        text_font_bold = not self:settingsMatchDefaults(),
+        text_font_bold = true,
+        enabled = self.profiles:profile().settings ~= nil and self.profiles:isModified(),
         show_parent = self,
         callback = function()
-            self:applyDefaults()
+            self:resetProfile()
         end,
     }
-    self.use_defaults_button = use_defaults_button
-    local set_defaults_button = Button:new{
-        text = _("Set as defaults"),
+    self.reset_button = reset_button
+    local save_profile_button = Button:new{
+        text = _("Save profile"),
         width = action_button_width,
         height = action_height,
         bordersize = Size.border.thin,
@@ -862,14 +854,15 @@ function TypographyOverlay:init()
         text_font_size = 17,
         show_parent = self,
         callback = function()
-            self:confirmSaveDefaults()
+            self:showSaveProfileDialog()
         end,
     }
+    self.save_profile_button = save_profile_button
     local action_group = HorizontalGroup:new{
         allow_mirroring = false,
-        use_defaults_button,
+        reset_button,
         HorizontalSpan:new{ width = action_gap },
-        set_defaults_button,
+        save_profile_button,
     }
 
     local content_children = { font_row }
@@ -910,6 +903,7 @@ function TypographyOverlay:init()
         padding = 0,
         background = Blitbuffer.COLOR_WHITE,
         VerticalGroup:new{
+            self.profile_tabs,
             content_frame,
             LineWidget:new{
                 background = Blitbuffer.COLOR_BLACK,
@@ -953,7 +947,7 @@ function TypographyOverlay:applyFontSize(value, refresh_emphasis)
     ui.document:setFontSize(Screen:scaleBySize(value))
     ui:handleEvent(Event:new("UpdatePos"))
     if refresh_emphasis ~= false then
-        self:refreshUseDefaultsEmphasis()
+        self:refreshProfileState()
     end
 end
 
@@ -963,14 +957,14 @@ function TypographyOverlay:applyLineSpacing(value, refresh_emphasis)
     ui.document:setInterlineSpacePercent(value)
     ui:handleEvent(Event:new("UpdatePos"))
     if refresh_emphasis ~= false then
-        self:refreshUseDefaultsEmphasis()
+        self:refreshProfileState()
     end
 end
 
 function TypographyOverlay:applyFontWeight(value, refresh_emphasis)
     self.plugin.ui.font:onSetFontBaseWeight(value)
     if refresh_emphasis ~= false then
-        self:refreshUseDefaultsEmphasis()
+        self:refreshProfileState()
     end
 end
 
@@ -980,246 +974,125 @@ function TypographyOverlay:applyMargins(value, refresh_emphasis)
     self.plugin.ui.typeset.configurable.h_page_margins = margins
     self.plugin.ui.typeset:onSetPageHorizMargins(margins)
     if refresh_emphasis ~= false then
-        self:refreshUseDefaultsEmphasis()
+        self:refreshProfileState()
     end
-end
-
-function TypographyOverlay:getDefaultAlignmentMode()
-    local style_tweak = self.plugin.ui.styletweak
-    local global_tweaks = style_tweak and style_tweak.global_tweaks or {}
-    if global_tweaks.text_align_most_left or global_tweaks.text_align_all_left then
-        return "left"
-    end
-    if global_tweaks.text_align_most_justify or global_tweaks.text_align_all_justify then
-        return "justify"
-    end
-    return "auto"
-end
-
-function TypographyOverlay:settingsMatchDefaults()
-    local ui = self.plugin.ui
-    local configurable = ui.document.configurable
-    local default_font = G_reader_settings:readSetting("cre_font")
-        or ui.document.default_font
-    local default_size = G_reader_settings:readSetting("copt_font_size")
-        or configurable.font_size
-    local default_weight = G_reader_settings:readSetting("copt_font_base_weight") or 0
-    local default_spacing = G_reader_settings:readSetting("copt_line_spacing")
-        or configurable.line_spacing
-    local default_margins = G_reader_settings:readSetting("copt_h_page_margins")
-        or configurable.h_page_margins
-    local current_margins = configurable.h_page_margins
-
-    return ui.font.font_face == default_font
-        and valuesMatch(configurable.font_size, default_size)
-        and valuesMatch(configurable.font_base_weight, default_weight)
-        and valuesMatch(configurable.line_spacing, default_spacing)
-        and type(current_margins) == "table"
-        and type(default_margins) == "table"
-        and valuesMatch(current_margins[1], default_margins[1])
-        and valuesMatch(current_margins[2], default_margins[2])
-        and self:getAlignmentMode() == self:getDefaultAlignmentMode()
-end
-
-function TypographyOverlay:refreshUseDefaultsEmphasis()
-    local button = self.use_defaults_button
-    if not button or not button.label_widget then
-        return
-    end
-    local bold = not self:settingsMatchDefaults()
-    if button.label_widget.bold == bold then
-        return
-    end
-    button.text_font_bold = bold
-    button.label_widget.bold = bold
-    button.label_widget:free()
-    UIManager:setDirty(self, function()
-        return "ui", button.dimen or self.panel.dimen
-    end)
 end
 
 function TypographyOverlay:getAlignmentMode()
-    local style_tweak = self.plugin.ui.styletweak
-    if not style_tweak or not style_tweak.enabled then
-        return "auto"
+    return TypographySettings.alignment(self.plugin.ui)
+end
+
+function TypographyOverlay:refreshProfileState()
+    if not self.profiles then return end
+    self.plugin:recordTypographySettings()
+    if self.profile_tabs then
+        for index, tab in ipairs(self.profile_tabs.tabs) do
+            tab:update(self.profiles:profile(index).name, self.profiles:isModified(index), index == self.profiles.active)
+        end
+        UIManager:setDirty(self, "ui", self.profile_tabs.dimen)
     end
-    if style_tweak:isTweakEnabled("text_align_most_left")
-            or style_tweak:isTweakEnabled("text_align_all_left") then
-        return "left"
+    local button = self.reset_button
+    if button then
+        local enabled = self.profiles:profile().settings ~= nil and self.profiles:isModified()
+        if button.enabled ~= enabled then
+            button.enabled = enabled
+            button.label_widget.fgcolor = enabled and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY
+            button.label_widget:free()
+        end
     end
-    if style_tweak:isTweakEnabled("text_align_most_justify")
-            or style_tweak:isTweakEnabled("text_align_all_justify") then
-        return "justify"
+    if self.panel then UIManager:setDirty(self, "ui", self.panel.dimen) end
+end
+
+function TypographyOverlay:refreshControls()
+    local settings = TypographySettings.capture(self.plugin.ui)
+    self.slider_controls[1].setValue(settings.size, false)
+    self.slider_controls[2].setValue(settings.weight, false)
+    self.slider_controls[3].setValue(settings.spacing, false)
+    self.slider_controls[4].setValue(Math.round((settings.margins[1] + settings.margins[2]) / 2), false)
+    self.font_name_button:setFont(settings.font, getDocumentFontFace(self.plugin.ui, 19))
+    self.font_value_group:resetLayout()
+    for _, item in ipairs(self.font_preview_items) do
+        item:setSelected(item.entry and item.entry.menu_item_id == settings.font)
     end
-    return "auto"
+    self.alignment_mode = settings.alignment
+    for mode, button in pairs(self.alignment_buttons) do button.frame.invert = mode == settings.alignment end
+    self:refreshProfileState()
 end
 
 function TypographyOverlay:setAlignmentMode(mode)
-    local style_tweak = self.plugin.ui.styletweak
-    if not style_tweak or mode == self.alignment_mode then
-        return
-    end
-    style_tweak.enabled = true
-    local desired_id = mode == "left" and "text_align_most_left"
-        or mode == "justify" and "text_align_most_justify"
-        or nil
-
-    -- Make this three-state control authoritative over all KOReader left and
-    -- justify variants. A false document value is required to override a
-    -- globally enabled tweak for the current book.
-    for _, tweak_id in ipairs(ALIGNMENT_TWEAKS) do
-        if tweak_id == desired_id then
-            if style_tweak.global_tweaks[tweak_id] then
-                style_tweak.doc_tweaks[tweak_id] = nil
-            else
-                style_tweak.doc_tweaks[tweak_id] = true
-            end
-        elseif style_tweak.global_tweaks[tweak_id] then
-            style_tweak.doc_tweaks[tweak_id] = false
-        else
-            style_tweak.doc_tweaks[tweak_id] = nil
-        end
-    end
-    style_tweak:updateCssText(true)
+    TypographySettings.setAlignment(self.plugin.ui, mode)
     self.alignment_mode = mode
-    for button_mode, button in pairs(self.alignment_buttons) do
-        local selected = button_mode == mode
-        if (button.frame.invert == true) ~= selected then
-            button.frame.invert = selected
-            if button.dimen then
-                local button_dimen = button.dimen
-                UIManager:setDirty(self, function()
-                    return "ui", button_dimen
-                end)
-            end
-        end
-    end
-    self:refreshUseDefaultsEmphasis()
+    for button_mode, button in pairs(self.alignment_buttons) do button.frame.invert = button_mode == mode end
+    self:refreshProfileState()
 end
 
-function TypographyOverlay:confirmSaveDefaults()
-    UIManager:show(ConfirmBox:new{
-        text = _("Use these typography settings as default values?"),
-        ok_text = _("Save"),
-        ok_callback = function()
-            self:saveDefaults()
-        end,
-    })
+function TypographyOverlay:selectProfile(index)
+    local settings = self.profiles:select(index, TypographySettings.capture(self.plugin.ui))
+    TypographySettings.apply(self.plugin.ui, settings)
+    self:refreshControls()
 end
 
-function TypographyOverlay:applyDefaults()
-    local ui = self.plugin.ui
-    local configurable = ui.document.configurable
-    local font_face = G_reader_settings:readSetting("cre_font")
-        or ui.document.default_font
-    local font_size = G_reader_settings:readSetting("copt_font_size")
-        or configurable.font_size
-    local font_weight = G_reader_settings:readSetting("copt_font_base_weight") or 0
-    local line_spacing = G_reader_settings:readSetting("copt_line_spacing")
-        or configurable.line_spacing
-    local margins = G_reader_settings:readSetting("copt_h_page_margins")
-        or configurable.h_page_margins
-
-    if ui.font.font_face ~= font_face then
-        ui.font:onSetFont(font_face)
-    end
-    if not valuesMatch(configurable.font_size, font_size) then
-        self:applyFontSize(font_size, false)
-    end
-    if not valuesMatch(configurable.font_base_weight, font_weight) then
-        self:applyFontWeight(font_weight, false)
-    end
-    if not valuesMatch(configurable.line_spacing, line_spacing) then
-        self:applyLineSpacing(line_spacing, false)
-    end
-    if type(margins) == "table" and margins[1] and margins[2] then
-        local default_margins = { margins[1], margins[2] }
-        local current_margins = configurable.h_page_margins
-        if type(current_margins) ~= "table"
-                or not valuesMatch(current_margins[1], default_margins[1])
-                or not valuesMatch(current_margins[2], default_margins[2]) then
-            ui.document.configurable.h_page_margins = default_margins
-            ui.typeset.configurable.h_page_margins = default_margins
-            ui.typeset:onSetPageHorizMargins(default_margins)
-        end
-    end
-
-    local style_tweak = ui.styletweak
-    if style_tweak then
-        for _, tweak_id in ipairs(ALIGNMENT_TWEAKS) do
-            style_tweak.doc_tweaks[tweak_id] = nil
-        end
-        style_tweak:updateCssText(true)
-    end
-
-    self.slider_controls[1].setValue(font_size, false)
-    self.slider_controls[2].setValue(font_weight, false)
-    self.slider_controls[3].setValue(line_spacing, false)
-    if type(margins) == "table" and margins[1] and margins[2] then
-        self.slider_controls[4].setValue(Math.round((margins[1] + margins[2]) / 2), false)
-    end
-
-    for _, preview_item in ipairs(self.font_preview_items) do
-        if preview_item:setSelected(preview_item.entry
-                and preview_item.entry.menu_item_id == ui.font.font_face)
-                and preview_item.dimen then
-            local item_dimen = preview_item.dimen
-            UIManager:setDirty(self, function()
-                return "ui", item_dimen
-            end)
-        end
-    end
-    self.font_name_button:setFont(ui.font.font_face, getDocumentFontFace(ui, 19))
-    self.font_value_group:resetLayout()
-    UIManager:setDirty(self, function()
-        return "ui", self.font_value.dimen or self.panel.dimen
-    end)
-
-    self.alignment_mode = self:getAlignmentMode()
-    for button_mode, button in pairs(self.alignment_buttons) do
-        local selected = button_mode == self.alignment_mode
-        if (button.frame.invert == true) ~= selected then
-            button.frame.invert = selected
-            if button.dimen then
-                local button_dimen = button.dimen
-                UIManager:setDirty(self, function()
-                    return "ui", button_dimen
-                end)
-            end
-        end
-    end
-    self:refreshUseDefaultsEmphasis()
-
-    UIManager:show(Notification:new{
-        text = _("Default settings applied"),
-    })
+function TypographyOverlay:resetProfile()
+    local settings = self.profiles:reset()
+    if not settings then return end
+    TypographySettings.apply(self.plugin.ui, settings)
+    self:refreshControls()
 end
 
-function TypographyOverlay:saveDefaults()
-    local ui = self.plugin.ui
-    local configurable = ui.document.configurable
-    G_reader_settings:saveSetting("cre_font", ui.font.font_face)
-    G_reader_settings:saveSetting("copt_font_size", configurable.font_size)
-    G_reader_settings:saveSetting("copt_font_base_weight", configurable.font_base_weight or 0)
-    G_reader_settings:saveSetting("copt_line_spacing", configurable.line_spacing)
-    G_reader_settings:saveSetting("copt_h_page_margins", configurable.h_page_margins)
+function TypographyOverlay:renameProfile(index)
+    local profile = self.profiles:profile(index)
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Rename profile"), input = profile.name, input_hint = _("Profile name"),
+        buttons = {{
+            { text = _("Cancel"), callback = function() UIManager:close(dialog) end },
+            { text = _("Rename"), is_enter_default = true, callback = function()
+                if self.profiles:rename(dialog:getInputText(), index) then
+                    UIManager:close(dialog)
+                    self:refreshProfileState()
+                end
+            end },
+        }},
+    }
+    UIManager:show(dialog)
+    dialog:onShowKeyboard()
+end
 
-    local style_tweak = ui.styletweak
-    if style_tweak then
-        local desired_id = self.alignment_mode == "left" and "text_align_most_left"
-            or self.alignment_mode == "justify" and "text_align_most_justify"
-            or nil
-        for _, tweak_id in ipairs(ALIGNMENT_TWEAKS) do
-            style_tweak.global_tweaks[tweak_id] = tweak_id == desired_id and true or nil
-            style_tweak.doc_tweaks[tweak_id] = nil
-        end
-        G_reader_settings:saveSetting("style_tweaks", style_tweak.global_tweaks)
-        style_tweak:updateCssText(true)
-    end
-    UIManager:show(Notification:new{
-        text = _("Default settings updated"),
-    })
-    self:refreshUseDefaultsEmphasis()
+function TypographyOverlay:showSaveProfileDialog()
+    local profile = self.profiles:profile()
+    local settings = TypographySettings.capture(self.plugin.ui)
+    local text = _("These settings will apply to all books using this profile that haven’t been customized.")
+    local dialog_width = math.floor(math.min(Screen:getWidth(), Screen:getHeight()) * 0.8)
+    local save_note = TextBoxWidget:new{
+        text = text, face = Font:getFace("smallinfofont", 17),
+        width = dialog_width - 2 * Size.padding.large,
+    }
+    local dialog
+    dialog = InputDialog:new{
+        title = _("Save profile?"), input = profile.name, input_hint = _("Profile name"),
+        keyboard_visible = false,
+        _added_widgets = {
+            CenterContainer:new{
+                dimen = Geom:new{ w = dialog_width, h = save_note:getSize().h },
+                save_note,
+            },
+        },
+        buttons = {{
+            { text = _("Cancel"), callback = function() UIManager:close(dialog) end },
+            { text = _("Save"), is_enter_default = true, callback = function()
+                local name = dialog:getInputText()
+                if name:match("^%s*$") then return end
+                if self.profiles.active == 1 then TypographySettings.saveDefaults(self.plugin.ui, settings) end
+                self.profiles:save(name, settings)
+                TypographySettings.apply(self.plugin.ui, settings)
+                UIManager:close(dialog)
+                self:refreshControls()
+                UIManager:show(Notification:new{ text = _("Profile saved") })
+            end },
+        }},
+    }
+    self.save_dialog = dialog
+    UIManager:show(dialog)
 end
 
 function TypographyOverlay:findSliderAt(pos)
@@ -1281,6 +1154,7 @@ end
 
 function TypographyOverlay:onCloseWidget()
     local toolbar = self.plugin.overlay
+    if toolbar then toolbar.typography_active = false end
     if toolbar and toolbar.selected_action == "typography" then
         toolbar:setSelectedAction(nil)
     end

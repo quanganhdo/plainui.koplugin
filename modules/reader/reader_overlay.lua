@@ -454,10 +454,15 @@ end
 
 function ReaderOverlay:getToolbarActionAt(pos)
     for _, button in ipairs(self.toolbar_action_buttons) do
-        if button.dimen and pos:intersectWith(button.dimen) then
+        if not (self.typography_active and button.action_id == "stats")
+                and button.dimen and pos:intersectWith(button.dimen) then
             return button
         end
     end
+end
+
+function ReaderOverlay:getTypographyTopOffset()
+    return self.panel:getSize().h - self.book_title_frame:getSize().h - Size.line.medium
 end
 
 function ReaderOverlay:setSelectedAction(action_id, force_repaint)

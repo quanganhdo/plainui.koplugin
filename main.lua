@@ -89,6 +89,10 @@ function PlainUI:onCloseDocument()
     self:stopPlugin()
 end
 
+function PlainUI:onSaveSettings()
+    if self.reader_controller then self.reader_controller:recordTypographySettings() end
+end
+
 function PlainUI:stopPlugin()
     if self.reader_controller then
         self.reader_controller:stop()

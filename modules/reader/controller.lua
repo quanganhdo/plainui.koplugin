@@ -37,11 +37,32 @@ end
 function Controller:onReaderReady()
     local TypographyOverlay = require("modules.reader.typography_overlay")
     TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
+    self:ensureTypographyProfiles()
     self:installSwipeHandler()
     self:installBottomNavigationHandler()
     if not self.navigation_history then
         self.navigation_history = require("modules.reader.navigation_history").new(self.ui)
         self.navigation_history:install()
+    end
+end
+
+function Controller:ensureTypographyProfiles()
+    if self.typography_profiles then return self.typography_profiles end
+    local ui = self.ui
+    if not ui or not ui.doc_settings or not ui.font or not ui.typeset
+            or not ui.document or not ui.document.configurable then return end
+    local Settings = require("modules.reader.typography_settings")
+    local Profiles = require("modules.reader.typography_profiles")
+    self.typography_profiles = Profiles.new(G_reader_settings, ui.doc_settings,
+        Settings.defaults(ui), Settings.capture(ui))
+    Settings.apply(ui, self.typography_profiles.current)
+    self.typography_profiles:record(Settings.capture(ui))
+    return self.typography_profiles
+end
+
+function Controller:recordTypographySettings()
+    if self.typography_profiles and self.ui and self.ui.document then
+        self.typography_profiles:record(require("modules.reader.typography_settings").capture(self.ui))
     end
 end
 
@@ -280,10 +301,13 @@ function Controller:showTypographyOverlay(options)
     end
     self:closeReadingStatsPopup()
     options = options or {}
+    self:ensureTypographyProfiles()
+    self:recordTypographySettings()
     local top_offset = options.top_offset
     if not top_offset and self.overlay and self.overlay.panel then
-        top_offset = self.overlay.panel:getSize().h
+        top_offset = self.overlay:getTypographyTopOffset()
     end
+    if self.overlay then self.overlay.typography_active = true end
     local TypographyOverlay = require("modules.reader.typography_overlay")
     self.typography_overlay = TypographyOverlay:new{
         font_page = options.font_page,
@@ -315,6 +339,7 @@ function Controller:closeTypographyOverlay()
         return
     end
     local overlay = self.typography_overlay
+    self:recordTypographySettings()
     self.typography_overlay = nil
     UIManager:close(overlay)
 end
@@ -413,6 +438,7 @@ function Controller:backToFileManager()
 end
 
 function Controller:stop()
+    self:recordTypographySettings()
     self:closeBottomNavigation()
     local config = self.ui and self.ui.config
     if config and self.installed_config_handler then
