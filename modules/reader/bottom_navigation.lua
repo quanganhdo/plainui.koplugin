@@ -16,7 +16,7 @@ local _ = require("gettext")
 
 local BottomNavigation = InputContainer:extend{
     name = "plainui_bottom_navigation",
-    covers_fullscreen = true,
+    covers_fullscreen = false,
     stop_events_propagation = true,
 }
 
@@ -25,36 +25,53 @@ function BottomNavigation:init()
     local function scale(n) return Screen:scaleBySize(n) end
     self.dimen = Geom:new{ x = 0, y = 0, w = w, h = h }
     self.padding = scale(24)
-    self.bar = Geom:new{ x = 0, y = h - scale(112), w = w, h = scale(112) }
-    self.slider = Geom:new{ x = self.padding, y = self.bar.y + scale(36),
+    self.bar = Geom:new{ x = 0, y = h - scale(136), w = w, h = scale(136) }
+    self.chapter_row = Geom:new{ x = 0, y = self.bar.y, w = w, h = scale(36) }
+    self.previous_chapter_button = Geom:new{ x = 0, y = self.bar.y, w = scale(64), h = scale(36) }
+    self.next_chapter_button = Geom:new{ x = w - scale(64), y = self.bar.y, w = scale(64), h = scale(36) }
+    self.slider = Geom:new{ x = self.padding, y = self.chapter_row.y + self.chapter_row.h,
         w = w - 2 * self.padding, h = scale(40) }
-    self.chevron = Geom:new{ x = 0, y = self.slider.y + self.slider.h,
-        w = w, h = h - self.slider.y - self.slider.h }
-    -- A single full-page thumbnail keeps the book's existing typography.
-    local available_h = self.bar.y - 2 * scale(16)
-    local preview_w = math.min(math.floor(w * 0.78), math.floor(available_h * w / h))
-    local preview_h = math.floor(preview_w * h / w)
-    self.preview_rect = Geom:new{ x = math.floor((w - preview_w) / 2),
-        y = math.floor((self.bar.y - preview_h) / 2), w = preview_w, h = preview_h }
+    self.origin_row = Geom:new{ x = self.padding, y = self.slider.y + self.slider.h,
+        w = math.floor((w - 2 * self.padding) * 0.65), h = scale(28) }
+    self.chevron = Geom:new{ x = 0, y = self.origin_row.y + self.origin_row.h,
+        w = w, h = h - self.origin_row.y - self.origin_row.h }
+    -- Kindle's single-page view floats a bordered card over the reading page.
+    -- Leave room inside the card for its close control, arrows, and page count.
+    local card_w = math.floor(w * 0.68)
+    local card_h = math.min(math.floor(h * 0.66), self.bar.y - scale(48))
+    self.preview_rect = Geom:new{ x = math.floor((w - card_w) / 2),
+        y = scale(24), w = card_w, h = card_h }
+    local r = self.preview_rect
+    self.preview_image_rect = Geom:new{ x = r.x + scale(24), y = r.y + scale(28),
+        w = r.w - scale(48), h = r.h - scale(56) }
+    self.close_button = Geom:new{ x = r.x + r.w - scale(32), y = r.y,
+        w = scale(32), h = scale(28) }
+    self.previous_page_button = Geom:new{ x = r.x, y = r.y + scale(28),
+        w = scale(24), h = r.h - scale(56) }
+    self.next_page_button = Geom:new{ x = r.x + r.w - scale(24), y = r.y + scale(28),
+        w = scale(24), h = r.h - scale(56) }
     self.labels = {}
     self.model = Preview.new{
         page = self.plugin.ui:getCurrentPage(),
         count = self.plugin.ui.document:getPageCount(),
         thumbnail = self.plugin.ui.thumbnail, manager = UIManager,
-        width = preview_w, height = preview_h,
+        width = self.preview_image_rect.w, height = self.preview_image_rect.h,
         changed = function()
-            local had_image = self.image ~= nil
-            self:clearImage()
+            -- Keep the last completed page visible while the next tile renders.
+            -- The model disables committing it until the new page is ready.
             self.failed = false
-            UIManager:setDirty(self, "ui", had_image and self.dimen or self.bar)
+            UIManager:setDirty(self, "ui", self.bar)
         end,
         rendered = function(tile)
-            self:clearImage()
             if tile then
+                self:clearImage()
+                self.image_page = self.model.page
                 self.image = ImageWidget:new{
                     image = tile.bb:copy(), image_disposable = true,
                     original_in_nightmode = false,
                 }
+                -- Load the owned buffer now so free() also works before paint.
+                self.image:getSize()
             end
             self.failed = tile == nil
             UIManager:setDirty(self, "ui", self.preview_rect)
@@ -80,17 +97,17 @@ function BottomNavigation:pageLabel(page)
     local ui = self.plugin.ui
     if ui.pagemap and ui.pagemap:wantsPageLabels() then
         local label = ui.pagemap:getXPointerPageLabel(ui.document:getPageXPointer(page))
-        if label then return T(_("Page %1"), label) end
+        if label and label ~= "" then return T(_("Page %1"), ui.pagemap:cleanPageLabel(label)) end
     end
     return T(_("Page %1"), page)
 end
 
-function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold)
+function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold, font_size)
     local widget = self.labels[id]
     if not widget or widget.text ~= text then
         if widget then widget:free() end
         widget = TextWidget:new{
-            text = text, face = Font:getFace("smallinfofont", 16),
+            text = text, face = Font:getFace("smallinfofont", font_size or 16),
             max_width = width, bold = bold,
         }
         self.labels[id] = widget
@@ -101,31 +118,81 @@ function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold)
     widget:paintTo(bb, x, y)
 end
 
+function BottomNavigation:chapterDestination(direction)
+    local toc = self.plugin.ui.toc
+    if not toc then return end
+    if direction < 0 then return toc:getPreviousChapter(self.model.page) end
+    return toc:getNextChapter(self.model.page)
+end
+
+function BottomNavigation:drawArrow(bb, cx, cy, direction, chapter, enabled)
+    local size = Screen:scaleBySize(chapter and 6 or 5)
+    local line = math.max(1, Screen:scaleBySize(1))
+    local color = enabled and Blitbuffer.COLOR_BLACK or Blitbuffer.COLOR_DARK_GRAY
+    if chapter then
+        for dx = 0, size do
+            local half = size - dx
+            bb:paintRect(cx + direction * dx, cy - half, line, 2 * half + 1, color)
+        end
+        bb:paintRect(cx + direction * (size + line + 1), cy - size, line, 2 * size + 1, color)
+    else
+        for dy = -size, size do
+            bb:paintRect(cx + direction * (size - math.abs(dy)), cy + dy, line, line, color)
+        end
+    end
+end
+
 function BottomNavigation:paintTo(bb, x, y)
-    bb:paintRect(x, y, self.dimen.w, self.dimen.h, Blitbuffer.COLOR_WHITE)
-    local r = self.preview_rect
-    bb:paintBorder(r.x, r.y, r.w, r.h, Screen:scaleBySize(1), Blitbuffer.COLOR_DARK_GRAY)
+    -- Cache a clean reader backdrop once. This avoids repeatedly lightening
+    -- the framebuffer on partial updates and keeps the original page visible.
+    if not self.background then
+        self.background = bb:copy()
+        self.background:lightenRect(0, 0, self.dimen.w, self.bar.y, 0.35)
+    end
+    bb:blitFrom(self.background, x, y)
+    local r, image_rect = self.preview_rect, self.preview_image_rect
+    bb:paintRect(r.x, r.y, r.w, r.h, Blitbuffer.COLOR_WHITE)
     if self.image then
         local size = self.image:getSize()
-        self.image:paintTo(bb, r.x + math.floor((r.w - size.w) / 2), r.y + math.floor((r.h - size.h) / 2))
+        self.image:paintTo(bb, image_rect.x + math.floor((image_rect.w - size.w) / 2),
+            image_rect.y + math.floor((image_rect.h - size.h) / 2))
     else
         self:drawText(bb, "loading", self.failed and _("Preview unavailable") or _("Loading…"),
-            r.x, r.y + math.floor(r.h / 2), r.w, "center")
+            image_rect.x, image_rect.y + math.floor(image_rect.h / 2), image_rect.w, "center", false, 14)
     end
-    local third = math.floor((self.dimen.w - 2 * self.padding) / 3)
-    local label_y = self.bar.y + Screen:scaleBySize(8)
-    self:drawText(bb, "origin", self.model.page ~= self.model.origin
-        and "← " .. self:pageLabel(self.model.origin) or "",
-        self.padding, label_y, third, "left", true)
-    self:drawText(bb, "page", self:pageLabel(self.model.page),
-        self.padding + third, label_y, third, "center")
-    self:drawText(bb, "percent", string.format("%d%%", math.floor(self.model.page * 100 / self.model.count)),
-        self.padding + 2 * third, label_y, third, "right")
+    local line = math.max(1, Screen:scaleBySize(1))
+    -- Paint the complete border last; the thumbnail must never overwrite it.
+    bb:paintBorder(r.x, r.y, r.w, r.h, line, Blitbuffer.COLOR_BLACK)
+    local close_x = self.close_button.x + math.floor(self.close_button.w / 2)
+    local close_y = self.close_button.y + math.floor(self.close_button.h / 2)
+    local cross_size = Screen:scaleBySize(4)
+    for d = -cross_size, cross_size do
+        bb:paintRect(close_x + d, close_y + d, line, line, Blitbuffer.COLOR_BLACK)
+        bb:paintRect(close_x + d, close_y - d, line, line, Blitbuffer.COLOR_BLACK)
+    end
+    self:drawArrow(bb, r.x + Screen:scaleBySize(10), r.y + math.floor(r.h / 2), -1, false, self.model.page > 1)
+    self:drawArrow(bb, r.x + r.w - Screen:scaleBySize(10), r.y + math.floor(r.h / 2), 1, false, self.model.page < self.model.count)
+    local visible_page = self.image_page or self.model.page
+    local count_label = T(_("%1 of %2"), self:pageLabel(visible_page), self.model.count)
+    self:drawText(bb, "page_count", count_label, r.x, r.y + r.h - Screen:scaleBySize(20), r.w, "center", true, 12)
+
+    bb:paintRect(self.bar.x, self.bar.y, self.bar.w, self.bar.h, Blitbuffer.COLOR_WHITE)
+    bb:paintRect(self.bar.x, self.bar.y, self.bar.w, line, Blitbuffer.COLOR_BLACK)
+    local chapter_y = self.chapter_row.y + math.floor(self.chapter_row.h / 2)
+    self:drawArrow(bb, self.padding + Screen:scaleBySize(10), chapter_y, -1, true, self:chapterDestination(-1) ~= nil)
+    self:drawArrow(bb, self.dimen.w - self.padding - Screen:scaleBySize(10), chapter_y, 1, true, self:chapterDestination(1) ~= nil)
+    local toc = self.plugin.ui.toc
+    local title = toc and toc:getTocTitleByPage(self.model.page) or ""
+    if title == "" then title = self.plugin.ui.document:getProps().title or "" end
+    local title_x = self.previous_chapter_button.w
+    local title_w = self.dimen.w - 2 * title_x
+    self:drawText(bb, "chapter", title, title_x, self.chapter_row.y + Screen:scaleBySize(10), title_w, "center")
+
     local cy = self.slider.y + math.floor(self.slider.h / 2)
-    local line = math.max(1, Screen:scaleBySize(2))
-    bb:paintRect(self.slider.x, cy, self.slider.w, line, Blitbuffer.COLOR_DARK_GRAY)
+    local track_h = Screen:scaleBySize(6)
+    bb:paintBorder(self.slider.x, cy - math.floor(track_h / 2), self.slider.w, track_h, line, Blitbuffer.COLOR_BLACK)
     local cx = self.slider.x + math.floor(self.model:ratio() * self.slider.w)
-    local radius = Screen:scaleBySize(9)
+    local radius = Screen:scaleBySize(12)
     for dy = -radius, radius do
         local half = math.floor(math.sqrt(radius * radius - dy * dy))
         bb:paintRect(cx - half, cy + dy, 2 * half + 1, 1, Blitbuffer.COLOR_BLACK)
@@ -135,6 +202,12 @@ function BottomNavigation:paintTo(bb, x, y)
         local half = math.floor(math.sqrt(inner * inner - dy * dy))
         bb:paintRect(cx - half, cy + dy, 2 * half + 1, 1, Blitbuffer.COLOR_WHITE)
     end
+    self:drawText(bb, "origin", self.model.page ~= self.model.origin
+        and "← " .. self:pageLabel(self.model.origin) or "",
+        self.origin_row.x, self.origin_row.y + Screen:scaleBySize(4), self.origin_row.w, "left", true, 14)
+    local percent_x = self.origin_row.x + self.origin_row.w
+    self:drawText(bb, "percent", string.format("%d%%", math.floor(self.model.page * 100 / self.model.count)),
+        percent_x, self.origin_row.y + Screen:scaleBySize(4), self.dimen.w - self.padding - percent_x, "right", false, 14)
     local center = math.floor(self.dimen.w / 2)
     local top = self.chevron.y + math.floor(self.chevron.h / 2) - Screen:scaleBySize(4)
     for dy = 0, Screen:scaleBySize(7) do
@@ -151,13 +224,21 @@ function BottomNavigation:onTapPlainNavigation(_, ges)
     local pos = ges.pos
     if pos:intersectWith(self.chevron) then self.plugin:showFullConfigMenu()
     elseif pos:intersectWith(self.slider) then self:selectAt(pos.x, true)
-    elseif pos:intersectWith(self.preview_rect) then
+    elseif pos:intersectWith(self.close_button) then self.plugin:closeBottomNavigation()
+    elseif pos:intersectWith(self.previous_chapter_button) then
+        local page = self:chapterDestination(-1)
+        if page then self.model:setPage(page, true) end
+    elseif pos:intersectWith(self.next_chapter_button) then
+        local page = self:chapterDestination(1)
+        if page then self.model:setPage(page, true) end
+    elseif pos:intersectWith(self.previous_page_button) then self.model:setPage(self.model.page - 1, true)
+    elseif pos:intersectWith(self.next_page_button) then self.model:setPage(self.model.page + 1, true)
+    elseif pos:intersectWith(self.origin_row) then self.model:setPage(self.model.origin, true)
+    elseif pos:intersectWith(self.preview_image_rect) then
         if self.model.ready then self.plugin:commitNavigationPreview(self.model.page) end
-    elseif pos.y >= self.bar.y then
-        if pos.x < self.padding + (self.dimen.w - 2 * self.padding) / 3 then
-            self.model:setPage(self.model.origin, true)
-        end
-    else self.plugin:closeBottomNavigation() end
+    elseif pos:notIntersectWith(self.preview_rect) and pos.y < self.bar.y then
+        self.plugin:closeBottomNavigation()
+    end
     return true
 end
 
@@ -201,6 +282,7 @@ BottomNavigation.onDoubleTapPlainNavigation = BottomNavigation.onIgnorePlainNavi
 BottomNavigation.onIgnoreMultiswipePlainNavigation = BottomNavigation.onIgnorePlainNavigation
 
 function BottomNavigation:onShow()
+    UIManager:setDirty(self.plugin.ui.dialog or self.plugin.ui, "ui", self.dimen)
     UIManager:setDirty(self, "ui", self.dimen)
     self.model:request()
 end
@@ -208,6 +290,7 @@ end
 function BottomNavigation:onCloseWidget()
     self.model:close()
     self:clearImage()
+    if self.background then self.background:free(); self.background = nil end
     for _, widget in pairs(self.labels) do widget:free() end
     self.labels = {}
     if self.plugin.bottom_navigation == self then self.plugin.bottom_navigation = nil end
