@@ -5,12 +5,9 @@ Plain UI is a minimal library and reading interface for KOReader, with quick acc
 ## Features
 
 - Browse Books, Series, Authors, and Tags in cover grids or detailed lists, with filters and sorting.
-- See reading progress and finished-book badges on covers.
-- Access lighting, dark mode, and Wi-Fi from the library and reader.
-- Swipe down while reading for typography, recent books, reading stats, and other tools. Sync actions appear when configured.
+- Swipe down while reading for typography, recent books, reading stats, and other tools.
 - Use three typography profiles with adjustments remembered for each book.
 - Swipe up from the bottom edge to preview pages, navigate chapters, and access bookmarks, the table of contents, and search.
-- Use Back, Forward, and Stay here after navigation jumps.
 
 The custom reader interface supports reflowable books such as EPUB. KOReader's native menus remain available through the edge chevrons.
 
