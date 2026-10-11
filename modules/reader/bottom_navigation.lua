@@ -162,13 +162,14 @@ function BottomNavigation:clearImage()
     if self.image then self.image:free(); self.image = nil end
 end
 
-function BottomNavigation:pageLabel(page)
+function BottomNavigation:pageLabel(page, compact)
     local ui = self.plugin.ui
+    local value = page
     if ui.pagemap and ui.pagemap:wantsPageLabels() then
         local label = ui.pagemap:getXPointerPageLabel(ui.document:getPageXPointer(page))
-        if label and label ~= "" then return T(_("Page %1"), ui.pagemap:cleanPageLabel(label)) end
+        if label and label ~= "" then value = ui.pagemap:cleanPageLabel(label) end
     end
-    return T(_("Page %1"), page)
+    return T(compact and _("p%1") or _("Page %1"), value)
 end
 
 function BottomNavigation:drawText(bb, id, text, x, y, width, align, bold, font_size, row_height)
@@ -269,7 +270,7 @@ function BottomNavigation:paintTo(bb, x, y)
     local inner = radius - line
     self:drawCircle(bb, cx, cy, inner, Blitbuffer.COLOR_WHITE)
     self:drawText(bb, "origin", self.model.page ~= self.model.origin
-        and "← " .. self:pageLabel(self.model.origin) or "",
+        and T(_("Return to %1"), self:pageLabel(self.model.origin, true)) or "",
         self.origin_row.x, self.origin_row.y, self.origin_row.w, "left", true, 18, self.origin_row.h)
     self:drawToolbarIcon(bb, "bookmarks", self.bookmarks_button)
     self:drawToolbarIcon(bb, "toc", self.toc_button)
