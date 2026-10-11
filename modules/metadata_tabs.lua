@@ -8,6 +8,7 @@ local Device = require("device")
 local Event = require("ui/event")
 local FileManager = require("apps/filemanager/filemanager")
 local FileChooser = require("ui/widget/filechooser")
+local FocusManager = require("ui/widget/focusmanager")
 local Font = require("ui/font")
 local Geom = require("ui/geometry")
 local HistorySort = require("modules.history_sort")
@@ -883,6 +884,17 @@ function MetadataTabsTitleBar:onFrontlightStateChanged()
     self:refreshStatusIndicators()
     UIManager:scheduleIn(0.2, self.refreshStatusIndicators, self)
     UIManager:scheduleIn(1, self.refreshStatusIndicators, self)
+end
+
+local FileChooser_moveFocusTo = FileChooser.moveFocusTo
+function FileChooser:moveFocusTo(x, y, focus_flags)
+    -- Keep the returned book in view without forcing a selection underline.
+    -- Actual keyboard navigation uses the normal focus flags and remains visible.
+    if self.name == "filemanager" and Device:isTouchDevice()
+            and focus_flags == FocusManager.FORCED_FOCUS then
+        focus_flags = FocusManager.FOCUS_ONLY_ON_NT
+    end
+    return FileChooser_moveFocusTo(self, x, y, focus_flags)
 end
 
 local FileChooser_show_file = FileChooser.show_file
