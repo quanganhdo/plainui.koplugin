@@ -181,7 +181,7 @@ end
 function BottomNavigation:pageLabel(page, compact)
     local ui = self.plugin.ui
     local value = page
-    if ui.pagemap and ui.pagemap:wantsPageLabels() then
+    if not ui.paging and ui.pagemap and ui.pagemap:wantsPageLabels() then
         local label = ui.pagemap:getXPointerPageLabel(ui.document:getPageXPointer(page))
         if label and label ~= "" then value = ui.pagemap:cleanPageLabel(label) end
     end
@@ -216,7 +216,17 @@ end
 
 function BottomNavigation:isPreviewBookmarked()
     local ui = self.plugin.ui
-    return ui.bookmark and ui.bookmark:isPageBookmarked(ui.document:getPageXPointer(self.model.page)) or false
+    if not ui.bookmark then return false end
+    local location = ui.paging and self.model.page or ui.document:getPageXPointer(self.model.page)
+    return ui.bookmark:isPageBookmarked(location)
+end
+
+function BottomNavigation:chapterTitle()
+    local ui = self.plugin.ui
+    local title = ui.toc and ui.toc:getTocTitleByPage(self.model.page) or ""
+    if title ~= "" then return title end
+    if ui.paging then return self:pageLabel(self.model.page) end
+    return ui.document:getProps().title or ""
 end
 
 function BottomNavigation:drawToolbarIcon(bb, id, rect, enabled)
@@ -278,11 +288,8 @@ function BottomNavigation:paintTo(bb, x, y)
     bb:paintRect(self.bar.x, self.bar.y, self.bar.w, line, Blitbuffer.COLOR_BLACK)
     self:drawToolbarIcon(bb, "previous_chapter", self.previous_chapter_button, self:chapterDestination(-1) ~= nil)
     self:drawToolbarIcon(bb, "next_chapter", self.next_chapter_button, self:chapterDestination(1) ~= nil)
-    local toc = self.plugin.ui.toc
-    local title = toc and toc:getTocTitleByPage(self.model.page) or ""
-    if title == "" then title = self.plugin.ui.document:getProps().title or "" end
     local chapter = self.chapter_button
-    self:drawText(bb, "chapter", title, chapter.x, chapter.y, chapter.w,
+    self:drawText(bb, "chapter", self:chapterTitle(), chapter.x, chapter.y, chapter.w,
         "center", true, ReturnStyle.font_size, chapter.h, true)
 
     local cy = self.slider.y + math.floor(self.slider.h / 2)

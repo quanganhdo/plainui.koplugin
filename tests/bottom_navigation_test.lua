@@ -25,7 +25,7 @@ package.loaded["device"] = {screen = {
 }}
 package.loaded["ffi/blitbuffer"] = {COLOR_WHITE = 0, COLOR_BLACK = 1, COLOR_DARK_GRAY = 2}
 package.loaded["ui/font"] = {getFace = function() return {} end}
-package.loaded["ui/size"] = {line = {medium = 2}, item = {height_big = 40}, padding = {large = 10}}
+package.loaded["ui/size"] = {line = {medium = 2, thick = 3}, item = {height_big = 40}, padding = {large = 10}}
 package.loaded["ffi/util"] = {template = function(t, ...)
     for i, v in ipairs{...} do t = t:gsub("%%" .. i, tostring(v)) end
     return t
@@ -99,6 +99,33 @@ local function fixture(deferred, link)
     end
     return widget, bb, plugin, requested, chapter_from, tap, pending
 end
+
+test("fixed-page previews use numeric bookmarks and page labels without text locations", function()
+    local w, bb, plugin, _, _, tap = fixture()
+    local ui = plugin.ui
+    ui.paging = {}
+    ui.toc = nil
+    ui.document.getPageXPointer = function() error("Fixed pages have no text locations") end
+    ui.pagemap = { wantsPageLabels = function() return true end,
+        getXPointerPageLabel = function() error("Fixed pages have no text page map") end }
+    equal(w:pageLabel(25), "Page 25")
+    equal(w:chapterTitle(), "Page 25")
+    equal(w:chapterDestination(-1), nil)
+    equal(w:chapterDestination(1), nil)
+    w:onShow()
+    equal(w:isPreviewBookmarked(), false)
+    tap(w.preview_bookmark_button)
+    equal(plugin.bookmarked_page, 25)
+    equal(w:isPreviewBookmarked(), true)
+    w.model:setPage(70, true)
+    equal(w:chapterTitle(), "Page 70")
+    equal(w:isPreviewBookmarked(), false)
+    w:paintTo(bb, 0, 0)
+    tap(w.chapter_button)
+    equal(plugin.goto_opened, true)
+    equal(plugin.committed, nil)
+    w:onCloseWidget()
+end)
 
 test("the saved circle marks only the opening page regardless of navigation history", function()
     local back = {{xpointer = "5"}, {xpointer = "10"}, {xpointer = "90"}, {xpointer = "90"}, {xpointer = "26"}, {xpointer = "25"}}

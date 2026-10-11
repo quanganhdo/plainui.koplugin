@@ -42,12 +42,12 @@ function PlainUI:init()
     self.reader_controller = nil
 end
 
-function PlainUI:isRollingReader()
-    return self.ui ~= nil and self.ui.rolling ~= nil
+function PlainUI:isReaderDocument()
+    return self.ui ~= nil and (self.ui.rolling ~= nil or self.ui.paging ~= nil)
 end
 
 function PlainUI:getReaderController()
-    if not self:isRollingReader() then
+    if not self:isReaderDocument() then
         return nil
     end
     if not self.reader_controller then

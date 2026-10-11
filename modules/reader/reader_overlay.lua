@@ -326,18 +326,17 @@ function ReaderOverlay:init()
             UIManager:broadcastEvent(Event:new("ToggleNightMode"))
         end,
     }
-    local typography_button = FileIconButton:new{
+    local typography_button = self.plugin.ui.rolling and FileIconButton:new{
         action_id = "typography",
         icon_file = action_icon_dir .. "text-size.svg",
         width = action_button_width,
         height = action_height,
         icon_width = action_icon_size,
         icon_height = action_icon_size,
-        enabled = self.plugin.ui.rolling ~= nil,
         callback = function()
             self.plugin:showTypographyOverlay()
         end,
-    }
+    } or nil
     if self.plugin:hasAnchoredReadingStatsPopup() then
         self.stats_button = FileIconButton:new{
             action_id = "stats",
@@ -354,7 +353,7 @@ function ReaderOverlay:init()
     self.toolbar_action_buttons = {}
     if self.lighting_button then table.insert(self.toolbar_action_buttons, self.lighting_button) end
     table.insert(self.toolbar_action_buttons, self.dark_mode_button)
-    table.insert(self.toolbar_action_buttons, typography_button)
+    if typography_button then table.insert(self.toolbar_action_buttons, typography_button) end
     self.more_button = FileIconButton:new{
         action_id = "more", icon_file = action_icon_dir .. "dots.svg",
         width = action_button_width, height = action_height,

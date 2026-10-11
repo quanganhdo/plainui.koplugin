@@ -35,9 +35,11 @@ function Controller:installSwipeHandler()
 end
 
 function Controller:onReaderReady()
-    local TypographyOverlay = require("modules.reader.typography_overlay")
-    TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
-    self:ensureTypographyProfiles()
+    if self.ui.rolling then
+        local TypographyOverlay = require("modules.reader.typography_overlay")
+        TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
+        self:ensureTypographyProfiles()
+    end
     self:installSwipeHandler()
     self:installBottomNavigationHandler()
     if not self.navigation_history then
@@ -49,7 +51,7 @@ end
 function Controller:ensureTypographyProfiles()
     if self.typography_profiles then return self.typography_profiles end
     local ui = self.ui
-    if not ui or not ui.doc_settings or not ui.font or not ui.typeset
+    if not ui or not ui.rolling or not ui.doc_settings or not ui.font or not ui.typeset
             or not ui.document or not ui.document.configurable then return end
     local Settings = require("modules.reader.typography_settings")
     local Profiles = require("modules.reader.typography_profiles")

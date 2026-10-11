@@ -409,6 +409,7 @@ test("reader ready leaves status bars untouched and installs the swipe overlay",
         package.loaded["modules.reader.controller"] = nil
         local Controller = require("modules.reader.controller")
         local ui = {
+            rolling = {},
             handleEvent = function() handled_events = handled_events + 1 end,
             menu = { onSwipeShowMenu = function() end },
             view = { footer = { settings = footer_settings } },
@@ -428,7 +429,35 @@ test("reader ready leaves status bars untouched and installs the swipe overlay",
     package.loaded["modules.reader.controller"] = nil
 end)
 
-test("Plain UI reader controller is created only for rolling ReaderUI", function()
+test("fixed-page reader installs navigation without loading typography or profiles", function()
+    withModules({
+        ["ui/event"] = { new = function(_, name) return { name = name } end },
+        ["logger"] = { info = function() end },
+        ["ui/uimanager"] = {},
+        ["modules.reader.typography_overlay"] = {
+            installCommonAlignmentTweaks = function() error("PDF must not apply text tweaks") end,
+        },
+        ["modules.reader.typography_settings"] = {
+            defaults = function() error("PDF must not create typography profiles") end,
+        },
+    }, function()
+        package.loaded["modules.reader.controller"] = nil
+        local Controller = require("modules.reader.controller")
+        local ui = { paging = {}, font = {}, typeset = {}, doc_settings = {},
+            document = { configurable = {} }, menu = { onSwipeShowMenu = function() end },
+            config = { onShowConfigMenu = function() end } }
+        local c = Controller.new({ path = "/plugin" }, ui)
+        c:onReaderReady()
+        assertTruthy(c.installed_swipe_handler)
+        assertTruthy(c.installed_config_handler)
+        assertEqual(c.typography_profiles, nil)
+        assertEqual(c:ensureTypographyProfiles(), nil)
+        c:stop()
+    end)
+    package.loaded["modules.reader.controller"] = nil
+end)
+
+test("Plain UI reader controller supports rolling and paging documents, including legacy opt-out settings", function()
     local installed_stats = 0
     local controller_creations = 0
     local controller_stops = 0
@@ -471,13 +500,14 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
         local file_manager_plugin = setmetatable({ ui = {} }, PlainUI)
         assertEqual(file_manager_plugin:getReaderController(), nil)
         local fixed_layout_plugin = setmetatable({ ui = { paging = {} } }, PlainUI)
-        assertEqual(fixed_layout_plugin:getReaderController(), nil)
+        assertTruthy(fixed_layout_plugin:getReaderController())
+        assertEqual(controller_creations, 1)
 
         local reader_plugin = setmetatable({ path = "/plugin", ui = { rolling = {} } }, PlainUI)
         assertTruthy(reader_plugin:getReaderController())
-        assertEqual(controller_creations, 1)
+        assertEqual(controller_creations, 2)
         assertTruthy(reader_plugin:getReaderController())
-        assertEqual(controller_creations, 1)
+        assertEqual(controller_creations, 2)
         assertEqual(installed_stats, 1)
         reader_plugin:onPageUpdate()
         assertEqual(history_refreshes, 1)
@@ -493,7 +523,7 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
             readSetting = function(_, key) if key == "plainui_reader_enabled" then return false end end,
         }
         assertTruthy(reader_plugin:getReaderController())
-        assertEqual(controller_creations, 2)
+        assertEqual(controller_creations, 3)
         G_reader_settings = original_settings
     end)
 end)

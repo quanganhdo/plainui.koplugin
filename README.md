@@ -9,7 +9,7 @@ Plain UI is a minimal library and reading interface for KOReader, with quick acc
 - Use three typography profiles with adjustments remembered for each book.
 - Swipe up from the bottom edge to preview pages, navigate chapters, and access bookmarks, the table of contents, and search.
 
-The custom reader interface supports reflowable books such as EPUB. KOReader's native menus remain available through the edge chevrons.
+The reader interface supports reflowable books and fixed-page documents such as PDFs. Typography profiles apply to reflowable books. KOReader's native menus remain available through the edge chevrons.
 
 ## Installation
 
