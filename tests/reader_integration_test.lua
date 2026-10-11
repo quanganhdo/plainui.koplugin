@@ -397,6 +397,8 @@ end)
 test("Plain UI reader controller is created only for rolling ReaderUI", function()
     local installed_stats = 0
     local controller_creations = 0
+    local controller_stops = 0
+    local history_refreshes = 0
     local WidgetContainer = {}
     function WidgetContainer:extend(definition)
         definition.__index = definition
@@ -410,7 +412,15 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
     local controller_module = {
         new = function(_, ui)
             controller_creations = controller_creations + 1
-            return { ui = ui, onReaderReady = function() end }
+            return {
+                ui = ui,
+                onReaderReady = function() end,
+                navigation_history = {
+                    active = true,
+                    queueRefresh = function() history_refreshes = history_refreshes + 1 end,
+                },
+                stop = function() controller_stops = controller_stops + 1 end,
+            }
         end,
     }
     withModules({
@@ -433,6 +443,18 @@ test("Plain UI reader controller is created only for rolling ReaderUI", function
         assertTruthy(reader_plugin:getReaderController())
         assertEqual(controller_creations, 1)
         assertEqual(installed_stats, 1)
+        reader_plugin:onPageUpdate()
+        assertEqual(history_refreshes, 1)
+        reader_plugin.reader_controller.navigation_history.active = false
+        reader_plugin:onPageUpdate()
+        assertEqual(history_refreshes, 1)
+        reader_plugin:onCloseDocument()
+        assertEqual(controller_stops, 1)
+        assertEqual(reader_plugin.reader_controller, nil)
+        local original_settings = G_reader_settings
+        G_reader_settings = { isFalse = function(_, key) return key == "plainui_reader_enabled" end }
+        assertEqual(reader_plugin:getReaderController(), nil)
+        G_reader_settings = original_settings
     end)
 end)
 

@@ -38,6 +38,10 @@ function Controller:onReaderReady()
     local TypographyOverlay = require("modules.reader.typography_overlay")
     TypographyOverlay.installCommonAlignmentTweaks(self.ui, true)
     self:installSwipeHandler()
+    if not self.navigation_history then
+        self.navigation_history = require("modules.reader.navigation_history").new(self.ui)
+        self.navigation_history:install()
+    end
 end
 
 function Controller:hasAnchoredReadingStatsPopup()
@@ -130,6 +134,7 @@ function Controller:onSetDimensions()
     self:closeReadingStatsPopup()
     self:closeOverlay()
     self:closeTypographyOverlay()
+    if self.navigation_history then self.navigation_history:onSetDimensions() end
 end
 
 function Controller:onSwipeShowOverlay(ges)
@@ -239,6 +244,10 @@ function Controller:backToFileManager()
 end
 
 function Controller:stop()
+    if self.navigation_history then
+        self.navigation_history:stop()
+        self.navigation_history = nil
+    end
     self:closeReadingStatsPopup()
     self:closeOverlay()
     self:closeTypographyOverlay()

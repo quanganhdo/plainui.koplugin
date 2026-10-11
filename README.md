@@ -15,6 +15,7 @@ It adds a Books, Series, Authors, and Tags tab bar, compact device status contro
 - Long-press the battery icon to view battery information.
 - Swipe down while reading to open a compact toolbar with typography, reading statistics, table of contents, and search actions.
 - Adjust font, spacing, margins, and alignment from a compact typography panel.
+- After a navigation jump, use a compact return footer: Back on the left, Forward in the center when available, and Stay here on the right. Page labels identify the destinations. Stay here dismisses the footer while preserving KOReader's location history; the next history-producing jump opens it again. Menus and dialogs temporarily hide it.
 
 Plain UI is meant to get you back to reading quickly so the feature set is deliberately small.
 
@@ -33,6 +34,16 @@ Cover badge text uses a default font size of `13`. If the badge text is too smal
 ```lua
 return {
     ["plainui_badge_font_size"] = 15,
+}
+```
+
+Restart KOReader after changing the setting.
+
+The Plain UI reader interface is enabled by default. To keep the library interface but use KOReader's standard reading menu without the return footer, add `plainui_reader_enabled` to `settings.reader.lua`:
+
+```lua
+return {
+    ["plainui_reader_enabled"] = false,
 }
 ```
 

@@ -46,8 +46,16 @@ function PlainUI:isRollingReader()
     return self.ui ~= nil and self.ui.rolling ~= nil
 end
 
+function PlainUI:isReaderEnabled()
+    if not G_reader_settings then return true end
+    if G_reader_settings.isFalse then
+        return not G_reader_settings:isFalse("plainui_reader_enabled")
+    end
+    return G_reader_settings:readSetting("plainui_reader_enabled") ~= false
+end
+
 function PlainUI:getReaderController()
-    if not self:isRollingReader() then
+    if not self:isReaderEnabled() or not self:isRollingReader() then
         return nil
     end
     if not self.reader_controller then
@@ -68,6 +76,17 @@ function PlainUI:onSetDimensions()
     if self.reader_controller then
         self.reader_controller:onSetDimensions()
     end
+end
+
+function PlainUI:onPageUpdate()
+    local controller = self.reader_controller
+    if controller and controller.navigation_history and controller.navigation_history.active then
+        controller.navigation_history:queueRefresh()
+    end
+end
+
+function PlainUI:onCloseDocument()
+    self:stopPlugin()
 end
 
 function PlainUI:stopPlugin()
