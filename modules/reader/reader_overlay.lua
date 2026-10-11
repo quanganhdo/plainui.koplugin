@@ -185,6 +185,7 @@ function ReaderOverlay:init()
         face = Font:getFace("smallinfofont", 14),
     }
     self.wifi_widget = StatusIcon:new{
+        ignore_hold = true,
         icon_file = StatusIndicators.getWifiIconPath(),
         icon_width = wifi_icon_size,
         icon_height = wifi_icon_size,
@@ -192,12 +193,7 @@ function ReaderOverlay:init()
         width = status_slot_width,
         height = status_height,
         callback = function()
-            StatusIndicators.toggleWifi(function()
-                self:refreshStatus()
-            end)
-        end,
-        hold_callback = function()
-            StatusIndicators.showWifiNetworks(function()
+            StatusIndicators.showWifiMenu(self.wifi_widget.dimen, function()
                 self:refreshStatus()
             end)
         end,

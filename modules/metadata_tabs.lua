@@ -458,6 +458,7 @@ function MetadataTabsTitleBar:init()
     self.wifi_icon_file = StatusIndicators.getWifiIconPath()
     self.wifi_available = wifi_state.available
     self.wifi_button = StatusIcon:new{
+        ignore_hold = true,
         touch_range = statusTouchRange("wifi_button"),
         icon_file = self.wifi_icon_file,
         icon_width = self.status_wifi_icon_size,
@@ -466,12 +467,7 @@ function MetadataTabsTitleBar:init()
         width = self.wifi_width,
         height = self.tab_label_height,
         callback = function()
-            StatusIndicators.toggleWifi(function()
-                self:updateStatusIndicators()
-            end)
-        end,
-        hold_callback = function()
-            StatusIndicators.showWifiNetworks(function()
+            StatusIndicators.showWifiMenu(self.wifi_button.touch_range(), function()
                 self:updateStatusIndicators()
             end)
         end,

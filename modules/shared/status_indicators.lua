@@ -189,6 +189,26 @@ function StatusIndicators.showBatteryInfo()
     })
 end
 
+function StatusIndicators.showWifiMenu(anchor, refresh_callback)
+    return require("modules.shared.wifi_menu").show(anchor, refresh_callback)
+end
+
+function StatusIndicators.setWifiEnabled(enabled, refresh_callback)
+    if not Device:hasWifiToggle() then return end
+    NetworkMgr:queryNetworkState()
+    local function complete()
+        NetworkMgr:queryNetworkState()
+        if refresh_callback then refresh_callback() end
+    end
+    if (NetworkMgr.is_wifi_on == true) == enabled then
+        complete()
+    elseif enabled then
+        NetworkMgr:toggleWifiOn(complete, nil, true)
+    else
+        NetworkMgr:toggleWifiOff(complete, true)
+    end
+end
+
 function StatusIndicators.toggleWifi(refresh_callback)
     if not Device:hasWifiToggle() then
         return

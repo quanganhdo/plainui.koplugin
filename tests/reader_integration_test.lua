@@ -294,6 +294,29 @@ test("shared status indicators map combined battery and Wi-Fi icon states", func
         assertEqual(widths.frontlight, 26)
         assertEqual(widths.wifi, 26)
         assertEqual(widths.battery, 20)
+
+        local network = stubs["ui/network/manager"]
+        local called, refreshed
+        network.queryNetworkState = function() end
+        network.toggleWifiOff = function(_, callback, interactive)
+            called = "off"
+            assertEqual(interactive, true)
+            callback()
+        end
+        network.toggleWifiOn = function(_, callback, long_press, interactive)
+            called = "on"
+            assertEqual(long_press, nil)
+            assertEqual(interactive, true)
+            callback()
+        end
+        for _, case in ipairs({ {true, false, "off"}, {false, true, "on"},
+                {true, true, nil}, {false, false, nil} }) do
+            network.is_wifi_on, network.is_connected = case[1], false
+            called, refreshed = nil, 0
+            StatusIndicators.setWifiEnabled(case[2], function() refreshed = refreshed + 1 end)
+            assertEqual(called, case[3])
+            assertEqual(refreshed, 1)
+        end
     end)
     package.loaded["modules.shared.status_indicators"] = nil
 end)

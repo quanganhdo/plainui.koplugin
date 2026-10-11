@@ -67,6 +67,10 @@ function StatusIcon:onTapStatusIcon()
 end
 
 function StatusIcon:onHoldStatusIcon()
+    if self.ignore_hold then
+        self.hold_handled = true
+        return true
+    end
     if self.hold_callback then
         self.hold_callback()
         self.hold_handled = true
