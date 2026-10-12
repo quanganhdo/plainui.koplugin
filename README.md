@@ -2,7 +2,7 @@
 
 Plain UI is a minimal library and reading interface for KOReader, with quick access to books and common reading controls.
 
-See the [short user guide](docs/index.html) for the full interface and everyday controls.
+See the [user guide](https://quanganhdo.github.io/plainui.koplugin/) for the full interface and everyday controls. An offline copy is included at `docs/index.html` in the release ZIP.
 
 ## Features
 
@@ -58,6 +58,8 @@ python3 tests/check_release.py /tmp/plainui.koplugin.zip
 ```
 
 Pushes to `dev` and `main`, and pull requests, run these checks automatically. The release workflow checks out the selected release tag, runs the same checks, and uploads the verified ZIP.
+
+The user guide publishes automatically when `docs/` changes reach `main`. Enable **Settings → Pages → Build and deployment → Source → GitHub Actions** once in the repository. WIP changes on `dev` are not published.
 
 ## Configuration
 
