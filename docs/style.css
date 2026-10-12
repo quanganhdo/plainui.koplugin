@@ -47,6 +47,10 @@ pre code { white-space: pre; }
 details { border-top: 1px solid var(--line); padding: 12px 0; }
 summary { cursor: pointer; font-weight: 600; }
 .patches { padding-left: 22px; }
+.table-scroll { max-width: 100%; overflow-x: auto; }
+.compatibility-table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
+.compatibility-table th, .compatibility-table td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.compatibility-table th { font-weight: 600; }
 .screenshots { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; margin: 24px 0 8px; align-items: start; }
 .screenshots.single { grid-template-columns: minmax(0, 360px); margin-bottom: 24px; }
 .screenshots.single.wide { grid-template-columns: minmax(0, 1fr); }

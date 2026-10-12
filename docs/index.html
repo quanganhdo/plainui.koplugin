@@ -22,6 +22,7 @@
         <a href="#typography">Typography</a>
         <a href="#navigation">Navigation</a>
         <a href="#stats">Reading stats</a>
+        <a href="#compatibility">Compatibility</a>
         <a href="#advanced">Advanced</a>
       </nav>
       <a class="source-link" href="https://github.com/quanganhdo/plainui.koplugin">Project on GitHub <span aria-hidden="true">↗</span></a>
@@ -39,9 +40,22 @@
       <section id="start" aria-labelledby="start-title">
         <div class="section-heading"><h2 id="start-title">Get started</h2></div>
         <ol class="steps">
-          <li>Copy <code>plainui.koplugin</code> into KOReader’s <code>plugins</code> folder.</li>
+          <li>Download the ZIP from <a href="https://github.com/quanganhdo/plainui.koplugin/releases">Releases</a> and extract <code>plainui.koplugin</code> into KOReader’s <code>plugins</code> folder. When upgrading, replace the existing plugin folder.</li>
+          <li>Disable other library or reader UI replacements. See <a href="#compatibility">Compatibility</a>.</li>
           <li>Make sure both <strong>Plain UI</strong> and KOReader’s built-in <strong>Cover browser</strong> plugins are enabled, then restart KOReader.</li>
         </ol>
+        <p><strong>Optional features</strong></p>
+        <p>KOReader built-in plugins:</p>
+        <ul class="quick-notes">
+          <li><strong>Reading stats:</strong> enable Reading statistics.</li>
+          <li><strong>Battery stats:</strong> enable Battery statistics.</li>
+          <li><strong>Progress sync:</strong> enable Progress sync and set up a KOReader sync account under <strong>Register / Login</strong> in its menu.</li>
+          <li><strong>Reading-stats sync:</strong> also enable Cloud storage and choose a sync folder in Reading statistics.</li>
+        </ul>
+        <p>Reading-stats patches by quanganhdo:</p>
+        <ul class="quick-notes">
+          <li><a href="https://github.com/quanganhdo/koreader-user-patches/blob/1.1.0/2-reading-stats-popup.lua">Reading Stats Popup</a> and <a href="https://github.com/quanganhdo/koreader-user-patches/blob/1.1.0/2-reading-insights-popup.lua">Reading Insights Popup</a>. See <a href="#compatibility">Compatibility</a> for tested versions and alternatives.</li>
+        </ul>
       </section>
 
       <section id="library" aria-labelledby="library-title">
@@ -119,6 +133,41 @@
             <figcaption>Reading stats with sample history: 90 minutes of reading across four days.</figcaption>
           </figure>
         </div>
+      </section>
+
+      <section id="compatibility" aria-labelledby="compatibility-title">
+        <h2 id="compatibility-title">Compatibility</h2>
+        <p>Tested with KOReader <code>v2026.03-81-g41c9e02b5</code>.</p>
+        <h3>Reading stats</h3>
+        <p>Compatible with the following tested versions:</p>
+        <div class="table-scroll">
+          <table class="compatibility-table">
+            <thead><tr><th scope="col">Patch or plugin</th><th scope="col">Tested version</th></tr></thead>
+            <tbody>
+              <tr><td><a href="https://github.com/quanganhdo/koreader-user-patches/blob/1.1.0/2-reading-stats-popup.lua">Reading Stats Popup</a> · quanganhdo</td><td>1.1.0</td></tr>
+              <tr><td><a href="https://github.com/quanganhdo/koreader-user-patches/blob/1.1.0/2-reading-insights-popup.lua">Reading Insights Popup</a> · quanganhdo</td><td>1.1.0</td></tr>
+              <tr><td><a href="https://github.com/medinauta/Koreader-Patches/blob/main/2-reading-stats-popup.lua">Reading Stats Popup</a> · medinauta</td><td>1.0.1 · snapshot from 2026-10-11</td></tr>
+              <tr><td><a href="https://github.com/peterboda236/readinginsights.koplugin/tree/670242e">Reading Insights</a> · peterboda236</td><td>7.6.4</td></tr>
+              <tr><td><a href="https://github.com/zenixlabs/koreader-frankenpatches-public/blob/168fc17/2-reading-insights-popup.lua">Reading Insights Popup</a> · Zenixlabs</td><td>commit <code>168fc17</code></td></tr>
+              <tr><td><a href="https://github.com/SinTan1729/koreader-patches/blob/2036eab/2-reading-insights-popup.lua">Reading Insights Popup</a> · SinTan1729</td><td>commit <code>2036eab</code></td></tr>
+              <tr><td><a href="https://github.com/Ko-Insight/KoInsight/tree/dda2240/plugins/koinsight.koplugin">KoInsight</a></td><td>0.3.0</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>The stats button opens an enabled book-overview plugin or patch. Your existing stats gestures still work. Choose one Reading Insights patch at a time.</p>
+        <h3>Other UI plugins</h3>
+        <div class="table-scroll">
+          <table class="compatibility-table">
+            <thead><tr><th scope="col">Plugin</th><th scope="col">Tested version</th><th scope="col">Compatibility with Plain UI</th></tr></thead>
+            <tbody>
+              <tr><td><a href="https://github.com/doctorhetfield-cmd/simpleui.koplugin">SimpleUI</a></td><td>1.4.1</td><td><strong>Incompatible.</strong> KOReader fails to start when both are enabled.</td></tr>
+              <tr><td><a href="https://github.com/joshuacant/ProjectTitle">Project: Title</a></td><td>commit <code>a685cc4</code></td><td><strong>Incompatible.</strong> Project: Title disables itself when Cover browser, required by Plain UI, is enabled.</td></tr>
+              <tr><td><a href="https://github.com/xZenLabs/zen-os">ZenOS</a></td><td>4.0.1</td><td><strong>Incompatible.</strong> Library controls fail when both are enabled.</td></tr>
+              <tr><td><a href="https://github.com/AndyHazz/bookshelf.koplugin">Bookshelf</a></td><td>5.4.1</td><td><strong>Reader only.</strong> Plain UI’s reading tools work, but Bookshelf replaces Plain UI’s library.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>To use Plain UI’s library, disable other UI replacements, including Bookshelf.</p>
       </section>
 
       <section id="advanced" aria-labelledby="advanced-title">

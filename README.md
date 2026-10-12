@@ -33,7 +33,20 @@ Typography changes are saved automatically for the current book. **Reset** resto
 
 ## Installation
 
-Copy `plainui.koplugin` into KOReader's `plugins` folder, enable the CoverBrowser plugin, and restart KOReader.
+1. Download `plainui.koplugin.zip` from [Releases](https://github.com/quanganhdo/plainui.koplugin/releases) and extract the `plainui.koplugin` folder into KOReader's `plugins` folder. When upgrading, replace the existing plugin folder.
+2. Disable other library or reader UI replacements. See [Compatibility](https://quanganhdo.github.io/plainui.koplugin/#compatibility) for tested versions and limitations.
+3. Make sure both **Plain UI** and KOReader's built-in **Cover browser** plugins are enabled, then restart KOReader.
+
+Optional KOReader built-in plugins:
+
+- **Reading statistics** for reading stats.
+- **Battery statistics** for battery history.
+- **Progress sync** for syncing your reading position; set up a KOReader sync account through its **Register / Login** menu.
+- **Cloud storage**, together with Reading statistics and a configured sync folder, for reading-statistics sync.
+
+Plain UI can coexist with supported reading-stats patches and plugins; see the guide's [Compatibility](https://quanganhdo.github.io/plainui.koplugin/#compatibility) section. If Plain UI reports redundant older library patches, remove the exact files listed in the notice and restart.
+
+Tested with KOReader `v2026.03-81-g41c9e02b5`. Other KOReader versions may work but have not been verified for this release.
 
 ## Configuration
 
