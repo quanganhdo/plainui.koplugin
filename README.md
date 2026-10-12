@@ -48,6 +48,17 @@ Plain UI can coexist with supported reading-stats patches and plugins; see the g
 
 Tested with KOReader `v2026.03-81-g41c9e02b5`. Other KOReader versions may work but have not been verified for this release.
 
+## Development and releases
+
+Use `dev` for work in progress. Run `lua tests/run.lua` for all 17 suites, then build and verify the installable ZIP:
+
+```sh
+python3 scripts/build_release.py /tmp/plainui.koplugin.zip
+python3 tests/check_release.py /tmp/plainui.koplugin.zip
+```
+
+Pushes to `dev` and `main`, and pull requests, run these checks automatically. The release workflow checks out the selected release tag, runs the same checks, and uploads the verified ZIP.
+
 ## Configuration
 
 To enlarge cover badges (default size: `13`), add this entry to the existing table in KOReader's `settings.reader.lua`, then restart KOReader:
