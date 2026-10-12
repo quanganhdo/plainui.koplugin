@@ -7,6 +7,7 @@ This repository uses [Beads](https://github.com/gastownhall/beads) 1.3.1 or newe
 Install the embedded-capable CLI (`brew install beads` on macOS), then run from the repository root:
 
 ```sh
+chmod 700 .beads
 bd bootstrap --yes
 bd hooks install --beads
 bd prime

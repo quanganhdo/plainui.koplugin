@@ -1,5 +1,4 @@
 issue-prefix: plainui
-
 # Share issue history through the existing GitHub repository.
 sync:
-  remote: "git+ssh://git@github.com/quanganhdo/plainui.koplugin"
+    remote: "git+ssh://git@github.com/quanganhdo/plainui.koplugin"
