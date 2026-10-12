@@ -20,22 +20,26 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
 
-      - name: Build release zip
+      - name: Install test runtime
+        run: sudo apt-get update && sudo apt-get install -y lua5.4
+
+      - name: Run all Lua suites
+        run: lua5.4 tests/run.lua
+
+      - name: Verify release tag
+        env:
+          TAG_NAME: ${{ github.event.release.tag_name || inputs.tag }}
         run: |
-          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          test "${TAG_NAME#v}" = "$version"
 
-          staging_dir="$(mktemp -d)"
-          plugin_dir="$staging_dir/plainui.koplugin"
-          mkdir -p "$plugin_dir/modules"
-
-          cp _meta.lua main.lua README.md VERSION LICENSE "$plugin_dir/"
-          cp modules/*.lua "$plugin_dir/modules/"
-
-          (
-            cd "$staging_dir"
-            zip -r "$GITHUB_WORKSPACE/plainui.koplugin.zip" plainui.koplugin
-          )
+      - name: Build and verify release zip
+        run: |
+          python3 scripts/build_release.py plainui.koplugin.zip
+          python3 tests/check_release.py plainui.koplugin.zip
 
       - name: Upload release asset
         env:

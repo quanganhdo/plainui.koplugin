@@ -1,7 +1,7 @@
 return {
     name = "plainui",
     fullname = "Plain UI",
-    description = [[File manager metadata tabs and cover annotations.]],
-    version = "1.2",
+    description = [[Minimal library and reading interface with metadata tabs, cover annotations, and compact reader controls.]],
+    version = "2.0",
     author = "Anh Do",
 }
