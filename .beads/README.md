@@ -4,17 +4,18 @@ This repository uses [Beads](https://github.com/gastownhall/beads) 1.3.1 or newe
 
 ## Set up a fresh clone
 
-Install the embedded-capable CLI (`brew install beads` on macOS), then run from the repository root:
+Install the embedded-capable CLI (`brew install beads` on macOS). Maintainers with push access run the following from the repository root:
 
 ```sh
 chmod 700 .beads
+git config beads.role maintainer
 bd bootstrap --yes
 bd hooks install --beads
 bd prime
 bd ready
 ```
 
-`bd bootstrap` restores the tracker from the configured GitHub remote without replacing an existing database. Do not use `bd init --force` for an existing tracker.
+`bd bootstrap` restores the tracker from the configured GitHub remote without replacing an existing database. Do not use `bd init --force` for an existing tracker. Fork contributors should use the Beads contributor workflow instead of declaring the maintainer role.
 
 ## Work on a task
 

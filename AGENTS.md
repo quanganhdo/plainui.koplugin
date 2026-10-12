@@ -22,7 +22,7 @@ Use Beads (`bd`, version 1.3.1 or newer) for development tasks. Run `bd prime` a
 
 Issues use the `plainui-` prefix. The embedded Dolt database is local; synchronize issue history separately from code with `bd dolt pull` and `bd dolt push`. The remote is the same GitHub repository, under `refs/dolt/data`.
 
-For a fresh clone, run `chmod 700 .beads`, `bd bootstrap --yes`, then `bd hooks install --beads`. Do not reinitialize an existing tracker or commit its database files. See `.beads/README.md` for the command sequence.
+For a fresh maintainer clone, run `chmod 700 .beads`, `git config beads.role maintainer`, `bd bootstrap --yes`, then `bd hooks install --beads`. Fork contributors should use the contributor workflow. Do not reinitialize an existing tracker or commit its database files. See `.beads/README.md` for the command sequence.
 
 Commit and push within the user's authorized scope. When publishing development work, push both the code branch and the Beads history; report any sync failure rather than claiming the work is fully published.
 
