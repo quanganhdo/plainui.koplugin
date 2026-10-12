@@ -17,6 +17,9 @@ Icon
 .VolumeIcon.icns
 .com.apple.timemachine.donotpresent
 
+# Local CodeGraph index
+.codegraph/
+
 # Beads / Dolt files (added by bd init)
 .dolt/
 *.db
