@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "plainui",
+  "project_id": "ecf2d756-f410-4983-8595-ef26a16c8f42"
+}
